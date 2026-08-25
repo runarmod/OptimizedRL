@@ -1,4 +1,3 @@
-
 import os
 from pathlib import Path
 
@@ -38,18 +37,27 @@ def build_solver(config):
             disable_presolve=bool(scip_brute_cfg.get("disable_presolve", True)),
             disable_separating=bool(scip_brute_cfg.get("disable_separating", True)),
             disable_propagation=bool(scip_brute_cfg.get("disable_propagation", False)),
-            disable_conflict_analysis=bool(scip_brute_cfg.get("disable_conflict_analysis", False)),
+            disable_conflict_analysis=bool(
+                scip_brute_cfg.get("disable_conflict_analysis", False)
+            ),
             disable_symmetry=bool(scip_brute_cfg.get("disable_symmetry", False)),
-            prefer_most_fractional_branching=bool(scip_brute_cfg.get("prefer_most_fractional_branching", False)),
-            prefer_breadth_first=bool(scip_brute_cfg.get("prefer_breadth_first", False)),
-            tighten_integer_projected_bounds=bool(scip_brute_cfg.get("tighten_integer_projected_bounds", False)),
-            mimic_bnb_pool_filter=bool(scip_brute_cfg.get("mimic_bnb_pool_filter", False)),
+            prefer_most_fractional_branching=bool(
+                scip_brute_cfg.get("prefer_most_fractional_branching", False)
+            ),
+            prefer_breadth_first=bool(
+                scip_brute_cfg.get("prefer_breadth_first", False)
+            ),
+            tighten_integer_projected_bounds=bool(
+                scip_brute_cfg.get("tighten_integer_projected_bounds", False)
+            ),
+            mimic_bnb_pool_filter=bool(
+                scip_brute_cfg.get("mimic_bnb_pool_filter", False)
+            ),
             prefer_depth_first=bool(scip_brute_cfg.get("prefer_depth_first", True)),
         )
 
     raise ValueError(
-        "training.solver must be either 'bnb' or 'scip'. "
-        f"Got '{solver_name}'."
+        f"training.solver must be either 'bnb' or 'scip'. Got '{solver_name}'."
     )
 
 
@@ -136,8 +144,10 @@ def compute_ppo_linearization_stats(recent_ppo_samples, theta_now):
         grad_mean = np.mean(theta_grads, axis=0, keepdims=True)
         grad_mean_norm = np.linalg.norm(grad_mean)
         if grad_mean_norm > 1e-8:
-            proj = (theta_delta @ grad_mean.T) / (grad_mean_norm ** 2)
-            grad_parallelism = float(proj[0] * grad_mean_norm / (np.linalg.norm(theta_delta) + 1e-8))
+            proj = (theta_delta @ grad_mean.T) / (grad_mean_norm**2)
+            grad_parallelism = float(
+                proj[0] * grad_mean_norm / (np.linalg.norm(theta_delta) + 1e-8)
+            )
         else:
             grad_parallelism = 0.0
         grad_parallelism_vals.append(grad_parallelism)
@@ -161,7 +171,9 @@ def compute_ppo_linearization_stats(recent_ppo_samples, theta_now):
     }
 
 
-def compute_ppo_exactness_stats(recent_ppo_samples, ppo_agent, model, solver, max_samples=8):
+def compute_ppo_exactness_stats(
+    recent_ppo_samples, ppo_agent, model, solver, max_samples=8
+):
     if len(recent_ppo_samples) == 0:
         return {}
 
@@ -214,7 +226,9 @@ def compute_ppo_exactness_stats(recent_ppo_samples, ppo_agent, model, solver, ma
 
         exact_argmin_idx = int(np.argmin(exact_obj))
         exact_argmin_action = exact_actions[exact_argmin_idx]
-        argmin_action_match_vals.append(float(np.allclose(lin_argmin_action, exact_argmin_action, atol=1e-6)))
+        argmin_action_match_vals.append(
+            float(np.allclose(lin_argmin_action, exact_argmin_action, atol=1e-6))
+        )
 
         lin_best = float(np.min(obj_lin))
         exact_best = float(np.min(exact_obj))
@@ -260,6 +274,7 @@ def compute_ppo_exactness_stats(recent_ppo_samples, ppo_agent, model, solver, ma
         "matched_action_l2_mean": float(np.mean(action_match_l2_vals)),
     }
 
+
 def main():
     project_root = Path(__file__).resolve().parent
     config_path = project_root / "config.yaml"
@@ -271,7 +286,9 @@ def main():
     configured_seed = int(config["numpy_seed"])
     effective_seed = configured_seed
     portfolio_zero_init_seeds = set(config.get("portfolio_zero_init_seeds", [5, 6, 7]))
-    force_portfolio_zero_init = problem_name == "portfolio" and configured_seed in portfolio_zero_init_seeds
+    force_portfolio_zero_init = (
+        problem_name == "portfolio" and configured_seed in portfolio_zero_init_seeds
+    )
 
     diagnostic_window = max(1, int(config.get("terminal_log_every", 1000)))
 
@@ -281,32 +298,31 @@ def main():
     np.random.seed(effective_seed)
     num_cons = config["model"]["n_cons"]
     num_pieces = config["model"]["n_value_func"]
-    aA = np.random.uniform(0,0.1,size = (num_pieces,state_size))
-    aB = np.random.uniform(0,0.1,size = (num_pieces,action_size))
-    b = np.random.uniform(0,.1,size=(num_pieces,))
-    c = np.random.uniform(0,10,size=(action_size,))
-    state = np.random.randint(2,size = state_size)
+    aA = np.random.uniform(0, 0.1, size=(num_pieces, state_size))
+    aB = np.random.uniform(0, 0.1, size=(num_pieces, action_size))
+    b = np.random.uniform(0, 0.1, size=(num_pieces,))
+    c = np.random.uniform(0, 10, size=(action_size,))
+    state = np.random.randint(2, size=state_size)
 
-
-    C = np.random.uniform(0,1,size = (num_cons-2,state_size))
-    C = np.vstack((C,np.zeros((2,state_size))))
-    D = np.random.uniform(0,1,size = (num_cons,action_size))
-    E = np.random.uniform(5,15,size = (num_cons-2))
-    E2 = np.random.uniform(1,10,size = (2))
-    E = np.hstack((E,E2))
+    C = np.random.uniform(0, 1, size=(num_cons - 2, state_size))
+    C = np.vstack((C, np.zeros((2, state_size))))
+    D = np.random.uniform(0, 1, size=(num_cons, action_size))
+    E = np.random.uniform(5, 15, size=(num_cons - 2))
+    E2 = np.random.uniform(1, 10, size=(2))
+    E = np.hstack((E, E2))
     action_ub = 10
-    
-    bounds = [(0,action_ub) for _ in range(len(c))]
-    integer = [1 for _ in range(len(c))]
-    c_model = -np.random.uniform(0,10,size = (1,)) * np.ones((action_size,))
-    A = np.random.uniform(0,.1,size = (state_size,state_size))
-    B = np.random.uniform(0,1,size = (state_size,action_size))
 
-    aA =np.vstack((aA,np.random.uniform(0,0.1,size = (5,state_size)))) 
-                  
-    aB =np.vstack((aB,np.random.uniform(0,0.1,size = (5,action_size))) )
+    bounds = [(0, action_ub) for _ in range(len(c))]
+    integer = [1 for _ in range(len(c))]
+    c_model = -np.random.uniform(0, 10, size=(1,)) * np.ones((action_size,))
+    A = np.random.uniform(0, 0.1, size=(state_size, state_size))
+    B = np.random.uniform(0, 1, size=(state_size, action_size))
+
+    aA = np.vstack((aA, np.random.uniform(0, 0.1, size=(5, state_size))))
+
+    aB = np.vstack((aB, np.random.uniform(0, 0.1, size=(5, action_size))))
     # # Init solver and gym model
-    b = np.hstack((b,np.random.uniform(0,.1,size=(5,))))
+    b = np.hstack((b, np.random.uniform(0, 0.1, size=(5,))))
 
     if force_portfolio_zero_init:
         # For selected portfolio seeds, use a neutral deterministic LP init.
@@ -326,11 +342,11 @@ def main():
             load_path = project_root / load_path
         with load_path.open() as params_file:
             params = yaml.safe_load(params_file)
-        aA = np.array(params['aA'])
-        aB = np.array(params['aB'])
-        c_model = np.array(params['c'])
-        b = np.array(params['b'])
-        
+        aA = np.array(params["aA"])
+        aB = np.array(params["aB"])
+        c_model = np.array(params["c"])
+        b = np.array(params["b"])
+
     if problem_name == "example":
         model_cls = example_model.Arbbin
         env_cls = example_env.Arb_binary
@@ -377,7 +393,9 @@ def main():
         lr_mult_aA = portfolio_model_cfg.get("lr_mult_aA", 1.0)
         lr_mult_aB = portfolio_model_cfg.get("lr_mult_aB", 1.0)
         lr_mult_b = portfolio_model_cfg.get("lr_mult_b", 1.0)
-        position_dynamics_mode = portfolio_model_cfg.get("position_dynamics_mode", "legacy")
+        position_dynamics_mode = portfolio_model_cfg.get(
+            "position_dynamics_mode", "legacy"
+        )
 
         env_kwargs = {
             "transaction_cost": transaction_cost,
@@ -430,9 +448,15 @@ def main():
             "price_levels_mode": price_levels_mode,
             "initial_asset_price": initial_asset_price,
         }
-        init_env_seed = 0 if force_portfolio_zero_init else (effective_seed if configured_seed >= 5 else 0)
+        init_env_seed = (
+            0
+            if force_portfolio_zero_init
+            else (effective_seed if configured_seed >= 5 else 0)
+        )
     else:
-        raise ValueError(f"Unsupported problem '{problem_name}'. Expected 'example' or 'portfolio'.")
+        raise ValueError(
+            f"Unsupported problem '{problem_name}'. Expected 'example' or 'portfolio'."
+        )
 
     m = model_cls(
         c_model,
@@ -471,8 +495,7 @@ def main():
 
     os.environ.setdefault("WANDB_SILENT", "true")
     os.environ.setdefault("WANDB_CONSOLE", "off")
-    run = wandb.init(name = config["name"],mode = config["wandb_mode"],config = config)
-
+    run = wandb.init(name=config["name"], mode=config["wandb_mode"], config=config)
 
     window_size = config["plotting"]["window_size"]
     training_cfg = config.get("training", {})
@@ -490,15 +513,15 @@ def main():
     beta = config["actor"]["beta"]
     eps = config["critic"]["eps"]
 
-    n_actions = action_ub*(100+10+1)+1
+    n_actions = action_ub * (100 + 10 + 1) + 1
 
-    dims = [state_size,128,128,1]
+    dims = [state_size, 128, 128, 1]
     solver = build_solver(config)
 
     act = None
     ppo_agent = None
     if algorithm == "vanilla_gradient":
-        critic = gae.GAE(dims,critic_lr,df,eps,0.1,runtime_device)
+        critic = gae.GAE(dims, critic_lr, df, eps, 0.1, runtime_device)
         act = actor.Actor(
             m,
             solver,
@@ -533,22 +556,23 @@ def main():
             normalize_rewards=bool(ppo_cfg.get("normalize_rewards", True)),
             reward_norm_eps=float(ppo_cfg.get("reward_norm_eps", 1e-8)),
             reward_clip=ppo_cfg.get("reward_clip", None),
-            nn_sample=bool(ppo_cfg.get("nn_sample", config.get("actor", {}).get("nn_sample", True))),
+            nn_sample=bool(
+                ppo_cfg.get("nn_sample", config.get("actor", {}).get("nn_sample", True))
+            ),
             device=runtime_device,
         )
 
     state = gym_model.state
 
-
-
     training_iters = config["train_iters"]
     vanilla_rollout_iters = config["rollout_iters"]
-    ppo_rollout_iters = int(config.get("ppo", {}).get("rollout_iters", vanilla_rollout_iters))
+    ppo_rollout_iters = int(
+        config.get("ppo", {}).get("rollout_iters", vanilla_rollout_iters)
+    )
     rollout_iters = ppo_rollout_iters if algorithm == "ppo" else vanilla_rollout_iters
     total_iters = config["total_iters"]
 
-
-    ep_reward =0
+    ep_reward = 0
     economic_ep_reward = 0
     ep_rewards = []
     rewards = []
@@ -566,7 +590,6 @@ def main():
         "risk_utilization_sum": 0.0,
         "empirical_cvar_sum": 0.0,
     }
-
 
     T = config["explicit_sol_time"]
     fathomed_counter = 0
@@ -587,17 +610,19 @@ def main():
     iter_counter = 0
     expected_ep_reward = None
     last_calced = 0
-    for _ in tqdm(range(total_iters),desc= "Total Iterations"):
+    for _ in tqdm(range(total_iters), desc="Total Iterations"):
         ppo_buffer = PPOBuffer() if algorithm == "ppo" else None
 
-        if  last_calced > comp_expected_every and comp_expected:
-            expected_ep_reward = calc_expected_reward(-c,A,B,C,D,E,T,state,solver)
+        if last_calced > comp_expected_every and comp_expected:
+            expected_ep_reward = calc_expected_reward(
+                -c, A, B, C, D, E, T, state, solver
+            )
             last_calced = 0
 
-        for i in tqdm(range(rollout_iters),leave=False,desc= "Rollout"):
+        for i in tqdm(range(rollout_iters), leave=False, desc="Rollout"):
             iter_counter += 1
             ep_length += 1
-            last_calced +=1
+            last_calced += 1
             diagnostics["step_count"] += 1
 
             if hasattr(m, "update_prev_action") and hasattr(gym_model, "prev_action"):
@@ -609,15 +634,19 @@ def main():
             if hasattr(m, "update_scenarios") and hasattr(gym_model, "return_window"):
                 m.update_scenarios(gym_model.return_window)
 
-
             store = True
             if algorithm == "vanilla_gradient":
                 act_out = act.act(state)
                 if act_out is None:
-                    action, act_info = None, {"fathomed": False, "nab": 0.0, "t_nab": 0.0, "n_sols": 0}
+                    action, act_info = (
+                        None,
+                        {"fathomed": False, "nab": 0.0, "t_nab": 0.0, "n_sols": 0},
+                    )
                 else:
                     action, act_info = act_out
-                fathomed_counter =  fathomed_counter + 1 if act_info["fathomed"] else fathomed_counter
+                fathomed_counter = (
+                    fathomed_counter + 1 if act_info["fathomed"] else fathomed_counter
+                )
                 nab = act_info["nab"]
                 t_nab = act_info["t_nab"]
                 if action is None:
@@ -638,17 +667,25 @@ def main():
 
                 if store and chosen_action_raw is not None:
                     executed_action = np.asarray(action, dtype=np.float32).reshape(-1)
-                    mismatch = float(not np.allclose(chosen_action_raw, executed_action, atol=1e-6))
-                    mismatch_l2 = float(np.linalg.norm(chosen_action_raw - executed_action))
+                    mismatch = float(
+                        not np.allclose(chosen_action_raw, executed_action, atol=1e-6)
+                    )
+                    mismatch_l2 = float(
+                        np.linalg.norm(chosen_action_raw - executed_action)
+                    )
                     recent_action_mismatch.append(mismatch)
                     recent_action_mismatch_l2.append(mismatch_l2)
                     if len(recent_action_mismatch) > diagnostic_window:
-                        recent_action_mismatch = recent_action_mismatch[-diagnostic_window:]
+                        recent_action_mismatch = recent_action_mismatch[
+                            -diagnostic_window:
+                        ]
                     if len(recent_action_mismatch_l2) > diagnostic_window:
-                        recent_action_mismatch_l2 = recent_action_mismatch_l2[-diagnostic_window:]
+                        recent_action_mismatch_l2 = recent_action_mismatch_l2[
+                            -diagnostic_window:
+                        ]
 
             old_state_for_buffer = np.asarray(state).copy()
-            state,reward,terminated,_,info = gym_model.step(action)
+            state, reward, terminated, _, info = gym_model.step(action)
             action_number = info["action"]
             old_state = info["old_state"]
             new_state = info["new_state"]
@@ -657,32 +694,49 @@ def main():
             economic_reward = float(info.get("economic_reward", -reward))
             empirical_cvar = 0.0
             scenario_matrix = info.get("scenario_matrix", None)
-            target_position = np.asarray(info.get("target_position", np.zeros((action_size,))), dtype=float)
-            if scenario_matrix is not None and hasattr(m, "cvar_mode") and m.cvar_mode == "on":
+            target_position = np.asarray(
+                info.get("target_position", np.zeros((action_size,))), dtype=float
+            )
+            if (
+                scenario_matrix is not None
+                and hasattr(m, "cvar_mode")
+                and m.cvar_mode == "on"
+            ):
                 scenario_matrix = np.asarray(scenario_matrix, dtype=float)
-                if scenario_matrix.ndim == 2 and scenario_matrix.shape[1] == target_position.shape[0]:
+                if (
+                    scenario_matrix.ndim == 2
+                    and scenario_matrix.shape[1] == target_position.shape[0]
+                ):
                     scenario_losses = -(scenario_matrix @ target_position)
-                    empirical_cvar = _empirical_cvar(scenario_losses, getattr(m, "cvar_alpha", 0.95))
+                    empirical_cvar = _empirical_cvar(
+                        scenario_losses, getattr(m, "cvar_alpha", 0.95)
+                    )
 
             diagnostics["turnover_sum"] += turnover
             diagnostics["risk_utilization_sum"] += risk_utilization
             diagnostics["empirical_cvar_sum"] += empirical_cvar
-            
+
             if algorithm == "vanilla_gradient" and store:
-                act.update_buffers(reward,action_number,old_state,new_state,nab,t_nab)
+                act.update_buffers(
+                    reward, action_number, old_state, new_state, nab, t_nab
+                )
             elif algorithm == "ppo" and store:
                 ppo_buffer.add(
                     PPOStep(
                         state=np.asarray(old_state_for_buffer, dtype=np.float32),
                         obj_vals=np.asarray(act_info["obj_vals"], dtype=np.float32),
-                        theta_grads=np.asarray(act_info["theta_grads"], dtype=np.float32),
+                        theta_grads=np.asarray(
+                            act_info["theta_grads"], dtype=np.float32
+                        ),
                         theta_ref=np.asarray(act_info["theta_ref"], dtype=np.float32),
                         action_idx=int(act_info["action_idx"]),
                         reward=float(reward),
                         done=bool(terminated),
                         old_logp=float(act_info["old_logp"]),
                         value=float(act_info["value"]),
-                        chosen_action_raw=np.asarray(chosen_action_raw, dtype=np.float32),
+                        chosen_action_raw=np.asarray(
+                            chosen_action_raw, dtype=np.float32
+                        ),
                         executed_action=np.asarray(action, dtype=np.float32),
                     )
                 )
@@ -691,8 +745,12 @@ def main():
                         "state": np.asarray(old_state_for_buffer, dtype=np.float32),
                         "obj_vals": np.asarray(act_info["obj_vals"], dtype=np.float32),
                         "actions": np.asarray(act_info["actions"], dtype=np.float32),
-                        "theta_grads": np.asarray(act_info["theta_grads"], dtype=np.float32),
-                        "theta_ref": np.asarray(act_info["theta_ref"], dtype=np.float32),
+                        "theta_grads": np.asarray(
+                            act_info["theta_grads"], dtype=np.float32
+                        ),
+                        "theta_ref": np.asarray(
+                            act_info["theta_ref"], dtype=np.float32
+                        ),
                         "action_idx": int(act_info["action_idx"]),
                         "old_logp": float(act_info["old_logp"]),
                     }
@@ -705,24 +763,26 @@ def main():
             n_sols = 0 if (act_info is None) else act_info.get("n_sols", 0)
             diagnostics["reward_sum"] += reward
             diagnostics["economic_reward_sum"] += economic_reward
-            diagnostics["reward_sq_sum"] += reward ** 2
+            diagnostics["reward_sq_sum"] += reward**2
             recent_rewards.append(float(reward))
             recent_n_sols.append(float(n_sols))
             if len(recent_rewards) > diagnostic_window:
                 recent_rewards = recent_rewards[-diagnostic_window:]
             if len(recent_n_sols) > diagnostic_window:
                 recent_n_sols = recent_n_sols[-diagnostic_window:]
-            run.log({
-                "reward" : reward,
-                "economic_reward": economic_reward,
-                "action" : action_number,
-                "n_sols" : n_sols,
-                "turnover": turnover,
-                "risk_utilization": risk_utilization,
-                "empirical_cvar": empirical_cvar,
-            })
+            run.log(
+                {
+                    "reward": reward,
+                    "economic_reward": economic_reward,
+                    "action": action_number,
+                    "n_sols": n_sols,
+                    "turnover": turnover,
+                    "risk_utilization": risk_utilization,
+                    "empirical_cvar": empirical_cvar,
+                }
+            )
 
-            if terminated or i == rollout_iters-1:
+            if terminated or i == rollout_iters - 1:
                 ep_rewards.append(ep_reward)
                 diagnostics["episode_count"] += 1
                 diagnostics["episode_reward_sum"] += ep_reward
@@ -730,14 +790,14 @@ def main():
                 diagnostics["episode_length_sum"] += ep_length
 
                 metric = {
-                    "ep_reward" : ep_reward,
+                    "ep_reward": ep_reward,
                     "economic_ep_reward": economic_ep_reward,
-                    "fathomed_counter" : fathomed_counter,
-                    "ep_length" : ep_length
-                          }
-                
+                    "fathomed_counter": fathomed_counter,
+                    "ep_length": ep_length,
+                }
+
                 if len(ep_rewards) == window_size:
-                    metric["smooth_ep_reward"] = sum(ep_rewards)/window_size
+                    metric["smooth_ep_reward"] = sum(ep_rewards) / window_size
                     ep_rewards = []
                 if comp_expected and expected_ep_reward is not None:
                     metric["expected_ep_reward"] = expected_ep_reward
@@ -748,20 +808,27 @@ def main():
                 economic_ep_reward = 0
                 fathomed_counter = 0
                 ep_length = 0
-                state,_ = gym_model.reset()
-                if hasattr(m, "update_prev_action") and hasattr(gym_model, "prev_action"):
+                state, _ = gym_model.reset()
+                if hasattr(m, "update_prev_action") and hasattr(
+                    gym_model, "prev_action"
+                ):
                     m.update_prev_action(gym_model.prev_action)
                 if hasattr(m, "update_cash") and hasattr(gym_model, "cash"):
                     m.update_cash(gym_model.cash)
                 if hasattr(m, "update_prices") and hasattr(gym_model, "prices"):
                     m.update_prices(gym_model.prices)
                 if last_calced > comp_expected_every and comp_expected:
-                    expected_ep_reward = calc_expected_reward(-c,A,B,C,D,E,T,state,solver)
+                    expected_ep_reward = calc_expected_reward(
+                        -c, A, B, C, D, E, T, state, solver
+                    )
                     last_calced = 0
 
-
         if algorithm == "vanilla_gradient":
-            pol_grad = act.train(iters = training_iters,sample = config["actor"]["sample"],num_samples=config["actor"]["num_samples"])
+            pol_grad = act.train(
+                iters=training_iters,
+                sample=config["actor"]["sample"],
+                num_samples=config["actor"]["num_samples"],
+            )
             pol_grad_norm = np.linalg.norm(pol_grad)
             ppo_metrics = {}
             ppo_invariance_stats = {}
@@ -777,20 +844,32 @@ def main():
                     bootstrap_value = float(
                         ppo_agent.value_net(state_final.unsqueeze(0)).squeeze(0).item()
                     )
-            ppo_metrics = ppo_agent.update(ppo_buffer, last_value=bootstrap_value) if len(ppo_buffer) > 0 else {}
+            ppo_metrics = (
+                ppo_agent.update(ppo_buffer, last_value=bootstrap_value)
+                if len(ppo_buffer) > 0
+                else {}
+            )
             pol_grad_norm = ppo_metrics.get("theta_norm", 0.0)
-            
+
             # Compute invariance diagnostics AFTER update using stored samples
             ppo_invariance_stats = {}
             if len(recent_ppo_samples) > 0:
                 theta_now = ppo_agent.theta.detach().cpu().numpy().astype(np.float32)
-                ppo_invariance_stats = compute_ppo_linearization_stats(recent_ppo_samples, theta_now)
+                ppo_invariance_stats = compute_ppo_linearization_stats(
+                    recent_ppo_samples, theta_now
+                )
 
-        c_diff = ((-c -m.c )**2).mean()
-        aA_change = np.sum((aA-m.aA)**2 )
-        aB_change = np.sum((aB-m.aB)**2)
-        b_change = np.sum((b-m.b)**2)
-        metrics = {"c_diff" : c_diff , "aA_change" : aA_change , "aB_change" : aB_change, "b_change" : b_change,"pol_grad": pol_grad_norm}
+        c_diff = ((-c - m.c) ** 2).mean()
+        aA_change = np.sum((aA - m.aA) ** 2)
+        aB_change = np.sum((aB - m.aB) ** 2)
+        b_change = np.sum((b - m.b) ** 2)
+        metrics = {
+            "c_diff": c_diff,
+            "aA_change": aA_change,
+            "aB_change": aB_change,
+            "b_change": b_change,
+            "pol_grad": pol_grad_norm,
+        }
         for k, v in ppo_metrics.items():
             metrics[f"ppo_{k}"] = v
         run.log(metrics)
@@ -825,20 +904,20 @@ def formulate_lp_with_initial_state(c, A, B, D, E, F, T, s_initial):
     n = B.shape[1]  # Dimension of x_t
     m = A.shape[0]  # Dimension of s_t
     if D is not None and E is not None:
-       k = D.shape[0] # Number of inequality constraints per step
-    else: # Handle case with no inequality constraints D, E, F
+        k = D.shape[0]  # Number of inequality constraints per step
+    else:  # Handle case with no inequality constraints D, E, F
         k = 0
 
-
     if s_initial.shape[0] != m:
-        raise ValueError(f"s_initial dimension ({s_initial.shape[0]}) must match A rows ({m})")
+        raise ValueError(
+            f"s_initial dimension ({s_initial.shape[0]}) must match A rows ({m})"
+        )
     if c.shape[0] != n:
         raise ValueError(f"c dimension ({c.shape[0]}) must match B columns ({n})")
     if k > 0 and F.shape[0] != k:
-         raise ValueError(f"F dimension ({F.shape[0]}) must match D rows ({k})")
+        raise ValueError(f"F dimension ({F.shape[0]}) must match D rows ({k})")
 
-
-    N = T * n + (T + 1) * m # Total number of variables in z
+    N = T * n + (T + 1) * m  # Total number of variables in z
 
     # --- Aggregated Cost Vector c_agg ---
     c_agg_x = np.tile(c, T)
@@ -848,7 +927,7 @@ def formulate_lp_with_initial_state(c, A, B, D, E, F, T, s_initial):
     # --- Equality Constraints (Dynamics) A_eq_dynamics z = 0 ---
     num_eq_dynamics = T * m
     A_eq_dynamics = lil_matrix((num_eq_dynamics, N))
-    I_m = identity(m, format='csr') # Use sparse identity
+    I_m = identity(m, format="csr")  # Use sparse identity
 
     for t in range(T):
         row_start = t * m
@@ -872,59 +951,65 @@ def formulate_lp_with_initial_state(c, A, B, D, E, F, T, s_initial):
     # --- Equality Constraints (Initial State) A_eq_s0 z = s_initial ---
     num_eq_s0 = m
     A_eq_s0 = lil_matrix((num_eq_s0, N))
-    s0_col_start = T * n # Column index where s_0 variables begin
+    s0_col_start = T * n  # Column index where s_0 variables begin
     s0_col_end = T * n + m
     A_eq_s0[:, s0_col_start:s0_col_end] = I_m
 
-    b_eq_s0 = s_initial # RHS is the fixed initial state
+    b_eq_s0 = s_initial  # RHS is the fixed initial state
 
     # --- Combine Equality Constraints ---
-    A_eq = vstack([A_eq_dynamics, A_eq_s0], format='csr')
+    A_eq = vstack([A_eq_dynamics, A_eq_s0], format="csr")
     b_eq = np.concatenate([b_eq_dynamics, b_eq_s0])
 
     # --- Inequality Constraints A_ub z <= b_ub ---
     if k > 0:
         num_ineq = T * k
-        A_ub_x = block_diag([E] * T, format='csr') # Size (T*k) x (T*n)
-        A_ub_s_main = block_diag([D] * T, format='csr') # Size (T*k) x (T*m) (for s_0 to s_{T-1})
-        A_ub_s_T_zeros = csr_matrix((num_ineq, m)) # Zero block for s_T columns, Size (T*k) x m
-        A_ub_s = hstack([A_ub_s_main, A_ub_s_T_zeros], format='csr') # Size (T*k) x ((T+1)*m)
-        A_ub = hstack([A_ub_x, A_ub_s], format='csr') # Size (T*k) x N
+        A_ub_x = block_diag([E] * T, format="csr")  # Size (T*k) x (T*n)
+        A_ub_s_main = block_diag(
+            [D] * T, format="csr"
+        )  # Size (T*k) x (T*m) (for s_0 to s_{T-1})
+        A_ub_s_T_zeros = csr_matrix(
+            (num_ineq, m)
+        )  # Zero block for s_T columns, Size (T*k) x m
+        A_ub_s = hstack(
+            [A_ub_s_main, A_ub_s_T_zeros], format="csr"
+        )  # Size (T*k) x ((T+1)*m)
+        A_ub = hstack([A_ub_x, A_ub_s], format="csr")  # Size (T*k) x N
 
         if F.ndim > 1:
             F_flat = F.flatten()
         else:
             F_flat = F
         b_ub = np.tile(F_flat, T)
-    else: # No inequality constraints
+    else:  # No inequality constraints
         # Create empty structures as placeholders or handle as needed by solver
-        A_ub = None # Or csr_matrix((0, N)) depending on solver needs
-        b_ub = None # Or np.array([])
+        A_ub = None  # Or csr_matrix((0, N)) depending on solver needs
+        b_ub = None  # Or np.array([])
 
     return c_agg, A_eq, b_eq, A_ub, b_ub
 
 
-
-def calc_expected_reward(c,A,B,C,D,E,T,state,solver):
+def calc_expected_reward(c, A, B, C, D, E, T, state, solver):
     sols = None
     while sols is None and T > 0:
+        c_agg, A_eq, b_eq, A_ub, b_ub = formulate_lp_with_initial_state(
+            c, A, B, C, D, E, T, state
+        )
 
-        c_agg,A_eq,b_eq,A_ub,b_ub = formulate_lp_with_initial_state(c,A,B,C,D,E,T,state)
-
-        bounds_agg = [(0,8) for _ in range(A_ub.shape[1])]
-        integer_actions = [ 1 for _ in range(c.size*T)]
-        integer_states = [ 0 for _ in range(A_ub.shape[1] - len(integer_actions))]
+        bounds_agg = [(0, 8) for _ in range(A_ub.shape[1])]
+        integer_actions = [1 for _ in range(c.size * T)]
+        integer_states = [0 for _ in range(A_ub.shape[1] - len(integer_actions))]
         integer_agg = integer_actions + integer_states
         node = {
-            "c" : c_agg,
-            "A_ub" : A_ub,
-            "b_ub" : b_ub,
-            "A_eq" : A_eq,
-            "b_eq" : b_eq,
-            "bounds" : bounds_agg,
-            "integer" : integer_agg,
+            "c": c_agg,
+            "A_ub": A_ub,
+            "b_ub": b_ub,
+            "A_eq": A_eq,
+            "b_eq": b_eq,
+            "bounds": bounds_agg,
+            "integer": integer_agg,
         }
-            
+
         sols = solver.solve(node)
         if sols is None:
             T -= 1
@@ -937,7 +1022,8 @@ def calc_expected_reward(c,A,B,C,D,E,T,state,solver):
 
 
 def moving_average(x, w):
-    return np.convolve(x, np.ones(w), 'valid') / w
+    return np.convolve(x, np.ones(w), "valid") / w
+
 
 if __name__ == "__main__":
     # pr = cProfile.Profile()

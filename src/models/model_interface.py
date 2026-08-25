@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 
 
 class Model(ABC):
-
     @abstractmethod
     def update_state(self):
         pass
@@ -20,13 +19,9 @@ class Model(ABC):
         pass
 
     @abstractmethod
-    def update_params(self,grad,lr):
+    def update_params(self, grad, lr):
         pass
 
     @abstractmethod
     def get_desc_var_indices(self):
         pass
-
-
-    
-

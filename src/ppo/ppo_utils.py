@@ -125,7 +125,6 @@ class PPOBuffer(PPORolloutBuffer):
     """Compatibility alias matching naming from PPO-MPC utilities."""
 
 
-
 def compute_returns_and_advantages(
     rewards: Sequence[float],
     values: Sequence[float],
@@ -214,7 +213,9 @@ class PPOMILPAgent:
         aA0, aB0, b0 = self._get_model_param_arrays()
         theta0 = self._flatten_theta(aA0, aB0, b0)
         self.theta_dim = int(theta0.size)
-        self.theta = nn.Parameter(torch.as_tensor(theta0, dtype=torch.float32, device=self.device))
+        self.theta = nn.Parameter(
+            torch.as_tensor(theta0, dtype=torch.float32, device=self.device)
+        )
         self.value_net = ValueNet(state_dim=state_dim).to(self.device)
         self.policy_opt = torch.optim.Adam([self.theta], lr=lr_policy)
         self.value_opt = torch.optim.Adam(self.value_net.parameters(), lr=lr_value)
@@ -315,8 +316,12 @@ class PPOMILPAgent:
 
     def _dist_from_linearized_obj(self, step: PPOStep) -> Categorical:
         obj_t = torch.as_tensor(step.obj_vals, dtype=torch.float32, device=self.device)
-        grad_t = torch.as_tensor(step.theta_grads, dtype=torch.float32, device=self.device)
-        theta_ref_t = torch.as_tensor(step.theta_ref, dtype=torch.float32, device=self.device)
+        grad_t = torch.as_tensor(
+            step.theta_grads, dtype=torch.float32, device=self.device
+        )
+        theta_ref_t = torch.as_tensor(
+            step.theta_ref, dtype=torch.float32, device=self.device
+        )
         theta_delta = self.theta - theta_ref_t
         obj_lin = obj_t + grad_t @ theta_delta
         logits = _stable_categorical_logits(
@@ -352,9 +357,16 @@ class PPOMILPAgent:
             else:
                 action, _ = naive_branch_sample(action, chosen["bounds"])
 
-        actions = [np.asarray(sol["x"][self.model.get_desc_var_indices()], dtype=np.float32) for sol in sol_pool]
-        ineq_margs = [np.asarray(sol.get("ineqlin", []), dtype=np.float32) for sol in sol_pool]
-        eq_margs = [np.asarray(sol.get("eqlin", []), dtype=np.float32) for sol in sol_pool]
+        actions = [
+            np.asarray(sol["x"][self.model.get_desc_var_indices()], dtype=np.float32)
+            for sol in sol_pool
+        ]
+        ineq_margs = [
+            np.asarray(sol.get("ineqlin", []), dtype=np.float32) for sol in sol_pool
+        ]
+        eq_margs = [
+            np.asarray(sol.get("eqlin", []), dtype=np.float32) for sol in sol_pool
+        ]
         state_arr = np.asarray(state, dtype=np.float32).reshape(-1)
         theta_grads = np.asarray(
             [
@@ -394,17 +406,26 @@ class PPOMILPAgent:
             dist = self._dist_from_linearized_obj(step)
             a_idx = torch.tensor(step.action_idx, dtype=torch.long, device=self.device)
             new_logp = dist.log_prob(a_idx)
-            old_logp = torch.tensor(step.old_logp, dtype=torch.float32, device=self.device)
+            old_logp = torch.tensor(
+                step.old_logp, dtype=torch.float32, device=self.device
+            )
 
             ratio = torch.exp(new_logp - old_logp)
             adv_i = advantages[i]
             surr1 = ratio * adv_i
-            surr2 = torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_i
+            surr2 = (
+                torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_i
+            )
             unclipped_terms.append(surr1)
             ratio_terms.append(torch.min(surr1, surr2))
             entropy_terms.append(dist.entropy())
             kls.append(old_logp - new_logp)
-            clip_active.append(((ratio < (1.0 - self.clip_param)) | (ratio > (1.0 + self.clip_param))).float())
+            clip_active.append(
+                (
+                    (ratio < (1.0 - self.clip_param))
+                    | (ratio > (1.0 + self.clip_param))
+                ).float()
+            )
 
         clipped_obj = torch.stack(ratio_terms).mean()
         unclipped_obj = torch.stack(unclipped_terms).mean()
@@ -413,9 +434,19 @@ class PPOMILPAgent:
         approx_kl = torch.stack(kls).mean()
         clip_fraction = torch.stack(clip_active).mean()
         clip_gap = unclipped_obj - clipped_obj
-        return policy_loss, entropy, approx_kl, unclipped_obj, clipped_obj, clip_gap, clip_fraction
+        return (
+            policy_loss,
+            entropy,
+            approx_kl,
+            unclipped_obj,
+            clipped_obj,
+            clip_gap,
+            clip_fraction,
+        )
 
-    def update(self, buffer: PPORolloutBuffer, last_value: float = 0.0) -> dict[str, float]:
+    def update(
+        self, buffer: PPORolloutBuffer, last_value: float = 0.0
+    ) -> dict[str, float]:
         if len(buffer) == 0:
             raise ValueError("PPO buffer is empty")
 
@@ -468,7 +499,12 @@ class PPOMILPAgent:
         else:
             explained_var = 0.0
 
-        if adv_np.size > 1 and returns_np.size > 1 and np.std(adv_np) > 1e-12 and np.std(returns_np) > 1e-12:
+        if (
+            adv_np.size > 1
+            and returns_np.size > 1
+            and np.std(adv_np) > 1e-12
+            and np.std(returns_np) > 1e-12
+        ):
             adv_returns_corr = float(np.corrcoef(adv_np, returns_np)[0, 1])
         else:
             adv_returns_corr = 0.0
@@ -486,8 +522,12 @@ class PPOMILPAgent:
             exe = np.asarray(s.executed_action, dtype=np.float32).reshape(-1)
             mismatch_flags.append(float(not np.allclose(raw, exe, atol=1e-6)))
             mismatch_l2.append(float(np.linalg.norm(raw - exe)))
-        action_mismatch_rate = float(np.mean(mismatch_flags)) if len(mismatch_flags) > 0 else 0.0
-        action_mismatch_l2_mean = float(np.mean(mismatch_l2)) if len(mismatch_l2) > 0 else 0.0
+        action_mismatch_rate = (
+            float(np.mean(mismatch_flags)) if len(mismatch_flags) > 0 else 0.0
+        )
+        action_mismatch_l2_mean = (
+            float(np.mean(mismatch_l2)) if len(mismatch_l2) > 0 else 0.0
+        )
 
         for _ in range(self.update_epochs):
             p_epoch = 0.0
@@ -502,13 +542,17 @@ class PPOMILPAgent:
 
             for mb_idx, mb in buffer.sampler(mb_size, drop_last=False):
                 adv_t = torch.as_tensor(
-                    [step_advs[i] for i in mb_idx], dtype=torch.float32, device=self.device
+                    [step_advs[i] for i in mb_idx],
+                    dtype=torch.float32,
+                    device=self.device,
                 )
                 if self.normalize_adv and adv_t.numel() > 1:
                     adv_t = (adv_t - adv_t.mean()) / (adv_t.std() + 1e-8)
 
                 ret_t = torch.as_tensor(
-                    [step_returns[i] for i in mb_idx], dtype=torch.float32, device=self.device
+                    [step_returns[i] for i in mb_idx],
+                    dtype=torch.float32,
+                    device=self.device,
                 )
                 states_t = torch.stack(
                     [_as_state_tensor(s.state, self.device) for s in mb], dim=0
@@ -526,7 +570,10 @@ class PPOMILPAgent:
                 value_pred = self.value_net(states_t)
                 value_loss = 0.5 * (value_pred - ret_t).pow(2).mean()
 
-                if self.target_kl > 0 and approx_kl.detach().item() > 1.5 * self.target_kl:
+                if (
+                    self.target_kl > 0
+                    and approx_kl.detach().item() > 1.5 * self.target_kl
+                ):
                     continue
 
                 self.policy_opt.zero_grad()
@@ -570,7 +617,9 @@ class PPOMILPAgent:
                 "entropy_loss": 0.0,
                 "approx_kl": 0.0,
                 "beta": float(self.beta),
-                "theta_norm": float(torch.linalg.norm(self.theta.detach()).cpu().item()),
+                "theta_norm": float(
+                    torch.linalg.norm(self.theta.detach()).cpu().item()
+                ),
                 "buffer_size": len(buffer),
                 "minimize_env_reward": float(self.minimize_env_reward),
                 "reward_raw_mean": float(rewards_np.mean()),
@@ -595,7 +644,11 @@ class PPOMILPAgent:
                 "surrogate_clipped": 0.0,
                 "surrogate_clip_gap": 0.0,
                 "clip_fraction": 0.0,
-                "theta_update_norm": float(torch.linalg.norm(self.theta.detach() - theta_before_update).cpu().item()),
+                "theta_update_norm": float(
+                    torch.linalg.norm(self.theta.detach() - theta_before_update)
+                    .cpu()
+                    .item()
+                ),
             }
 
         out = {k: float(sum(v) / len(v)) for k, v in results.items()}
@@ -621,11 +674,12 @@ class PPOMILPAgent:
         out["td_error_std"] = td_error_std
         out["action_mismatch_rate"] = action_mismatch_rate
         out["action_mismatch_l2_mean"] = action_mismatch_l2_mean
-        out["theta_update_norm"] = float(torch.linalg.norm(self.theta.detach() - theta_before_update).cpu().item())
+        out["theta_update_norm"] = float(
+            torch.linalg.norm(self.theta.detach() - theta_before_update).cpu().item()
+        )
         self._sync_model_params_from_theta()
         return out
 
 
 class PPO_MILP_Agent(PPOMILPAgent):
     """Compatibility class matching naming style from PPO-MPC utilities."""
-

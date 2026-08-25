@@ -51,7 +51,7 @@ def _var_name_to_id(var_name):
     if idx == -1:
         return var_name
 
-    suffix = var_name[idx + len(marker):]
+    suffix = var_name[idx + len(marker) :]
     if suffix.isdigit():
         return int(suffix)
     return var_name
@@ -213,14 +213,20 @@ class NodeTracker(Eventhdlr):
             branchings = node.getParentBranchings()
             if branchings is not None:
                 vars_b, bounds_b, bound_types = branchings
-                for var_obj, bound_val, bound_type in zip(vars_b, bounds_b, bound_types):
+                for var_obj, bound_val, bound_type in zip(
+                    vars_b, bounds_b, bound_types
+                ):
                     var_name = getattr(var_obj, "name", str(var_obj))
                     var_id = _var_name_to_id(var_name)
                     op = ">=" if int(bound_type) == 0 else "<="
                     local_conds.append((var_id, op, float(bound_val)))
                 if local_conds:
                     last = local_conds[-1]
-                    entry["branching_decision"] = {"var": last[0], "type": last[1], "value": last[2]}
+                    entry["branching_decision"] = {
+                        "var": last[0],
+                        "type": last[1],
+                        "value": last[2],
+                    }
         except Exception:
             local_conds = []
 
@@ -235,21 +241,48 @@ class NodeTracker(Eventhdlr):
                     pass
             entry["node_bounds"] = node_bounds
 
-            if node_bounds and not local_conds and parent_num is not None and parent_num in self.parent_bounds:
+            if (
+                node_bounds
+                and not local_conds
+                and parent_num is not None
+                and parent_num in self.parent_bounds
+            ):
                 for var_name, bound_info in node_bounds.items():
-                    parent_lb, parent_ub = self.parent_bounds[parent_num].get(var_name, (None, None))
+                    parent_lb, parent_ub = self.parent_bounds[parent_num].get(
+                        var_name, (None, None)
+                    )
                     curr_lb, curr_ub = bound_info.get("lb"), bound_info.get("ub")
                     var_id = _var_name_to_id(var_name)
-                    if curr_lb is not None and parent_lb is not None and curr_lb > parent_lb + 1e-6:
-                        entry["branching_decision"] = {"var": var_id, "type": ">=", "value": curr_lb}
+                    if (
+                        curr_lb is not None
+                        and parent_lb is not None
+                        and curr_lb > parent_lb + 1e-6
+                    ):
+                        entry["branching_decision"] = {
+                            "var": var_id,
+                            "type": ">=",
+                            "value": curr_lb,
+                        }
                         local_conds = [(var_id, ">=", curr_lb)]
                         break
-                    if curr_ub is not None and parent_ub is not None and curr_ub < parent_ub - 1e-6:
-                        entry["branching_decision"] = {"var": var_id, "type": "<=", "value": curr_ub}
+                    if (
+                        curr_ub is not None
+                        and parent_ub is not None
+                        and curr_ub < parent_ub - 1e-6
+                    ):
+                        entry["branching_decision"] = {
+                            "var": var_id,
+                            "type": "<=",
+                            "value": curr_ub,
+                        }
                         local_conds = [(var_id, "<=", curr_ub)]
                         break
 
-            conds = list(self.node_map[parent_num].get("conds", [])) if parent_num in self.node_map else []
+            conds = (
+                list(self.node_map[parent_num].get("conds", []))
+                if parent_num in self.node_map
+                else []
+            )
             conds.extend(local_conds)
             entry["conds"] = conds
 
@@ -288,7 +321,9 @@ class NodeTracker(Eventhdlr):
             try:
                 for var in model.getVars():
                     try:
-                        entry["reduced_costs"][var.name] = float(model.getVarRedcost(var))
+                        entry["reduced_costs"][var.name] = float(
+                            model.getVarRedcost(var)
+                        )
                     except Exception:
                         entry["reduced_costs"][var.name] = None
             except Exception:
@@ -299,11 +334,24 @@ class NodeTracker(Eventhdlr):
             if entry["lp_obj"] is None and existing.get("lp_obj") is not None:
                 entry["lp_obj"] = existing["lp_obj"]
 
-            entry["was_solved"] = bool(existing.get("was_solved", False) or entry.get("was_solved", False))
-            entry["was_lp_solved"] = bool(existing.get("was_lp_solved", False) or entry.get("was_lp_solved", False))
-            entry["was_deleted"] = bool(existing.get("was_deleted", False) or entry.get("was_deleted", False))
+            entry["was_solved"] = bool(
+                existing.get("was_solved", False) or entry.get("was_solved", False)
+            )
+            entry["was_lp_solved"] = bool(
+                existing.get("was_lp_solved", False)
+                or entry.get("was_lp_solved", False)
+            )
+            entry["was_deleted"] = bool(
+                existing.get("was_deleted", False) or entry.get("was_deleted", False)
+            )
 
-            for key in ("primal", "duals_ineq", "duals_eq", "reduced_costs", "node_bounds"):
+            for key in (
+                "primal",
+                "duals_ineq",
+                "duals_eq",
+                "reduced_costs",
+                "node_bounds",
+            ):
                 current = entry.get(key, {}) or {}
                 previous = existing.get(key, {}) or {}
                 if previous:
@@ -313,7 +361,10 @@ class NodeTracker(Eventhdlr):
 
             if not entry.get("conds") and existing.get("conds"):
                 entry["conds"] = list(existing["conds"])
-            if entry.get("branching_decision") is None and existing.get("branching_decision") is not None:
+            if (
+                entry.get("branching_decision") is None
+                and existing.get("branching_decision") is not None
+            ):
                 entry["branching_decision"] = existing["branching_decision"]
         self.node_map[node_num] = entry
 
@@ -344,7 +395,9 @@ class BNBMostFractionalBranchrule(Branchrule):
 
     def branchexeclp(self, allowaddcons):
         try:
-            branch_cands, branch_cand_sols, _, _, npriocands, _ = self.model.getLPBranchCands()
+            branch_cands, branch_cand_sols, _, _, npriocands, _ = (
+                self.model.getLPBranchCands()
+            )
         except Exception:
             return {"result": SCIP_RESULT.DIDNOTRUN}
 
@@ -359,7 +412,9 @@ class BNBMostFractionalBranchrule(Branchrule):
             if frac < 1e-6:
                 continue
 
-            var_id = _var_name_to_id(getattr(branch_cands[idx], "name", str(branch_cands[idx])))
+            var_id = _var_name_to_id(
+                getattr(branch_cands[idx], "name", str(branch_cands[idx]))
+            )
             tie_break = int(var_id) if isinstance(var_id, int) else int(1e9)
             key = (frac, -tie_break)
             if best_key is None or key > best_key:
@@ -370,7 +425,9 @@ class BNBMostFractionalBranchrule(Branchrule):
             return {"result": SCIP_RESULT.DIDNOTRUN}
 
         try:
-            self.model.branchVarVal(branch_cands[best_idx], float(branch_cand_sols[best_idx]))
+            self.model.branchVarVal(
+                branch_cands[best_idx], float(branch_cand_sols[best_idx])
+            )
         except Exception:
             return {"result": SCIP_RESULT.DIDNOTRUN}
 
@@ -381,6 +438,7 @@ class BNBMostFractionalBranchrule(Branchrule):
 
     def branchexecps(self, allowaddcons):
         return {"result": SCIP_RESULT.DIDNOTRUN}
+
 
 class SCIPSolver:
     def __init__(
@@ -416,7 +474,10 @@ class SCIPSolver:
     def _format_conds(conds):
         if not conds:
             return "root"
-        return ", ".join(f"x_{_var_name_to_id(var_id)} {op} {float(val):.6g}" for var_id, op, val in conds)
+        return ", ".join(
+            f"x_{_var_name_to_id(var_id)} {op} {float(val):.6g}"
+            for var_id, op, val in conds
+        )
 
     def _store_tree_snapshot(self, tracker, results, solve_status, pool_debug=None):
         pool_node_labels = []
@@ -456,7 +517,10 @@ class SCIPSolver:
         node_lookup = {str(node["node_num"]): node for node in nodes}
         extra_counter = 0
         for entry in results or []:
-            if entry.get("status") == "scip_node_lp" and entry.get("node_num") is not None:
+            if (
+                entry.get("status") == "scip_node_lp"
+                and entry.get("node_num") is not None
+            ):
                 node_label = str(int(entry["node_num"]))
                 _append_pool_label(node_label)
                 if node_label in node_lookup:
@@ -475,7 +539,9 @@ class SCIPSolver:
                     "depth": len(conds),
                     "lp_obj": entry.get("fun"),
                     "status": entry.get("status"),
-                    "branching_decision": None if branch is None else {"var": branch[0], "type": branch[1], "value": branch[2]},
+                    "branching_decision": None
+                    if branch is None
+                    else {"var": branch[0], "type": branch[1], "value": branch[2]},
                     "conds": conds,
                     "in_pool": True,
                 }
@@ -502,13 +568,15 @@ class SCIPSolver:
             return "[scip-tree] unavailable"
 
         lines = [
-            "[scip-tree] "
-            f"status={snapshot['solve_status']} "
-            f"tracked_nodes={len(snapshot['nodes'])} "
-            f"pool_nodes={len(snapshot['pool_node_labels'])} "
-            f"focused={snapshot['event_counts'].get('NODEFOCUSED', 0)} "
-            f"solved={snapshot['event_counts'].get('NODESOLVED', 0)} "
-            f"deleted={snapshot['event_counts'].get('NODEDELETE', 0)}"
+            (
+                "[scip-tree] "
+                f"status={snapshot['solve_status']} "
+                f"tracked_nodes={len(snapshot['nodes'])} "
+                f"pool_nodes={len(snapshot['pool_node_labels'])} "
+                f"focused={snapshot['event_counts'].get('NODEFOCUSED', 0)} "
+                f"solved={snapshot['event_counts'].get('NODESOLVED', 0)} "
+                f"deleted={snapshot['event_counts'].get('NODEDELETE', 0)}"
+            )
         ]
 
         if snapshot["pool_node_labels"]:
@@ -522,7 +590,9 @@ class SCIPSolver:
         if pool_debug:
             lines.append(
                 "[scip-tree-pool-debug] "
-                + " ".join(f"{key}={value}" for key, value in sorted(pool_debug.items()))
+                + " ".join(
+                    f"{key}={value}" for key, value in sorted(pool_debug.items())
+                )
             )
 
         for node in snapshot["nodes"]:
@@ -663,7 +733,10 @@ class SCIPSolver:
     @staticmethod
     def _all_integer(x, integer, tol=1e-6):
         x = np.asarray(x, dtype=float)
-        return all((abs(float(value) - round(float(value))) < tol) if is_integer else True for value, is_integer in zip(x, integer))
+        return all(
+            (abs(float(value) - round(float(value))) < tol) if is_integer else True
+            for value, is_integer in zip(x, integer)
+        )
 
     @staticmethod
     def _bnb_like_order_key(entry):
@@ -727,9 +800,7 @@ class SCIPSolver:
             return False
         if not np.isfinite(fun_value):
             return False
-        if fun_value <= _INVALID_OBJ:
-            return False
-        return True
+        return not fun_value <= _INVALID_OBJ
 
     @staticmethod
     def _leaf_node_ids(tracker):
@@ -747,11 +818,7 @@ class SCIPSolver:
                 continue
             child_counts[parent_num] = child_counts.get(parent_num, 0) + 1
 
-        return {
-            int(node_num)
-            for node_num, count in child_counts.items()
-            if count == 0
-        }
+        return {int(node_num) for node_num, count in child_counts.items() if count == 0}
 
     def _solve_lp_with_conds(self, init_node, conds):
         bounds = list(init_node["bounds"])
@@ -790,7 +857,9 @@ class SCIPSolver:
             "fun": float(res.fun),
             "x": np.asarray(res.x, dtype=float),
             "eqlin": _normalize_linprog_duals(res.eqlin.marginals, init_node["A_eq"]),
-            "ineqlin": _normalize_linprog_duals(res.ineqlin.marginals, init_node["A_ub"]),
+            "ineqlin": _normalize_linprog_duals(
+                res.ineqlin.marginals, init_node["A_ub"]
+            ),
             "lower": np.asarray(res.lower.marginals, dtype=float),
             "upper": np.asarray(res.upper.marginals, dtype=float),
             "fathomed": False,
@@ -860,9 +929,13 @@ class SCIPSolver:
                     except Exception:
                         eq_cons_names.append(str(cons))
 
-            tracker = NodeTracker(integer, ineq_cons_names=ineq_cons_names, eq_cons_names=eq_cons_names)
+            tracker = NodeTracker(
+                integer, ineq_cons_names=ineq_cons_names, eq_cons_names=eq_cons_names
+            )
             try:
-                model.includeEventhdlr(tracker, "node_tracker", "collect visited node LP info")
+                model.includeEventhdlr(
+                    tracker, "node_tracker", "collect visited node LP info"
+                )
             except Exception:
                 pass
 
@@ -927,7 +1000,9 @@ class SCIPSolver:
                         "fun": float(fun_value),
                         "x": x,
                         "eqlin": np.asarray(lp_solution.get("eqlin", []), dtype=float),
-                        "ineqlin": np.asarray(lp_solution.get("ineqlin", []), dtype=float),
+                        "ineqlin": np.asarray(
+                            lp_solution.get("ineqlin", []), dtype=float
+                        ),
                         "lower": np.asarray(lp_solution.get("lower", []), dtype=float),
                         "upper": np.asarray(lp_solution.get("upper", []), dtype=float),
                         "fathomed": True,
@@ -964,13 +1039,17 @@ class SCIPSolver:
                 pre_filter_count = len(results)
                 results, filter_stats = self._filter_pool_like_bnb(results, integer)
                 pool_debug["filter_removed"] = pre_filter_count - len(results)
-                pool_debug["filter_fallback_to_ordered"] = int(filter_stats.get("fallback_to_ordered", 0))
+                pool_debug["filter_fallback_to_ordered"] = int(
+                    filter_stats.get("fallback_to_ordered", 0)
+                )
                 for key, value in filter_stats.items():
                     pool_debug[f"bnb_filter_{key}"] = value
 
             pool_debug["post_filter_results"] = len(results)
 
-            self._store_tree_snapshot(tracker, results, str(model.getStatus()), pool_debug=pool_debug)
+            self._store_tree_snapshot(
+                tracker, results, str(model.getStatus()), pool_debug=pool_debug
+            )
 
             if self.verbose:
                 print(f"SCIP status: {model.getStatus()}")

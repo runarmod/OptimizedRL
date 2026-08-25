@@ -8,13 +8,13 @@ from scipy.optimize import linprog
 # Node dictionary template
 
 example_node = {
-    "c" : None,
-    "A_ub" : None,
-    "b_ub" : None,
-    "A_eq" : None,
-    "b_eq" : None,
-    "bounds" : None,
-    "integer" : None,
+    "c": None,
+    "A_ub": None,
+    "b_ub": None,
+    "A_eq": None,
+    "b_eq": None,
+    "bounds": None,
+    "integer": None,
 }
 
 
@@ -32,16 +32,13 @@ def _normalize_linprog_duals(marginals, constraint_matrix):
     return duals.reshape(-1)
 
 
-
-
-
-
 class BranchAndBound:
     """
-        Implements a basic branch and bound algorithm, takes a dictionary defining the inital problem node as its input.
-    
+    Implements a basic branch and bound algorithm, takes a dictionary defining the inital problem node as its input.
+
     """
-    def __init__(self,init_node,sense):
+
+    def __init__(self, init_node, sense):
         self.init_node = init_node
         self.integer = self.init_node["integer"]
         self.tree = []
@@ -50,8 +47,7 @@ class BranchAndBound:
         self.end_node = None
         self.pool = []
 
-
-    def optimize_node(self,node):
+    def optimize_node(self, node):
         return linprog(
             node["c"],
             node["A_ub"],
@@ -59,16 +55,16 @@ class BranchAndBound:
             node["A_eq"],
             node["b_eq"],
             node["bounds"],
-            )
+        )
 
-# Handle infeasible sub sol
-# Add parent and child relation
+    # Handle infeasible sub sol
+    # Add parent and child relation
 
-    def branch(self,node,x):
+    def branch(self, node, x):
         # need to remove non integer
-        # x = x[self.integer] 
+        # x = x[self.integer]
         diff = np.abs(x) - np.floor(np.abs(x))
-        diff = [val if isint else 0 for val,isint in zip(diff,self.integer)]
+        diff = [val if isint else 0 for val, isint in zip(diff, self.integer)]
         # diff = [np.abs(xi - round(xi)) if isint else 0 for xi, isint in zip(x, self.integer)]
         if max(diff) < 1e-6:
             return None, None
@@ -77,22 +73,28 @@ class BranchAndBound:
         left_branch = deepcopy(node)
         right_branch = deepcopy(node)
 
-        left_branch["bounds"][branch_var] = (left_branch["bounds"][branch_var][0],floor(x[branch_var]))
-        right_branch["bounds"][branch_var] = (ceil(x[branch_var]),right_branch["bounds"][branch_var][1] )
+        left_branch["bounds"][branch_var] = (
+            left_branch["bounds"][branch_var][0],
+            floor(x[branch_var]),
+        )
+        right_branch["bounds"][branch_var] = (
+            ceil(x[branch_var]),
+            right_branch["bounds"][branch_var][1],
+        )
 
         left_branch["parent"] = node
         right_branch["parent"] = node
-        return left_branch,right_branch
+        return left_branch, right_branch
 
-        
     # def all_integer(self,x):
     #    return all( [not(var.is_integer() ^ bool(i)) for var,i in zip(x,self.integer)])
     def all_integer(self, x):
-        return all((np.abs(var - round(var)) < 1e-6) if i else True for var, i in zip(x, self.integer))
+        return all(
+            (np.abs(var - round(var)) < 1e-6) if i else True
+            for var, i in zip(x, self.integer)
+        )
 
-
-
-    def solve(self,verbose = False):
+    def solve(self, verbose=False):
         res = self.optimize_node(self.init_node)
         if not res.success:
             # print(res)
@@ -107,14 +109,13 @@ class BranchAndBound:
             self.end_node = self.init_node
             # print(f"Number of nodes explored: {iter}")
 
-
             return self.sol
-        
-        sol_rounded = np.floor(res.x) # Does this work for negative solutions?
+
+        sol_rounded = np.floor(res.x)  # Does this work for negative solutions?
         # sol_rounded = np.where(self.init_node["c"] >= 0,  np.ceil(res.x),np.floor(res.x))
         ub = self.init_node["c"] @ sol_rounded
         ub = float("inf")
-        l,r = self.branch(self.init_node,res.x)
+        l, r = self.branch(self.init_node, res.x)
         self.queue.append(l)
         self.queue.append(r)
         self.init_node["children"].append(l)
@@ -140,7 +141,7 @@ class BranchAndBound:
                     self.pool.append(res)
 
             elif res.fun <= ub:
-                l,r = self.branch(node,res.x)
+                l, r = self.branch(node, res.x)
 
                 self.queue.append(l)
                 self.queue.append(r)
@@ -151,15 +152,13 @@ class BranchAndBound:
         return self.sol
 
 
-
-
-
 class BranchAndBoundRevamped:
     """
-        Implements a basic branch and bound algorithm, takes a dictionary defining the inital problem node as its input.
-    
+    Implements a basic branch and bound algorithm, takes a dictionary defining the inital problem node as its input.
+
     """
-    def __init__(self,verbose = False):
+
+    def __init__(self, verbose=False):
         self.verbose = verbose
         self.last_tree_snapshot = None
 
@@ -168,8 +167,7 @@ class BranchAndBoundRevamped:
         if not conds:
             return "root"
         return ", ".join(
-            f"x_{int(var_id)} {op} {float(val):.6g}"
-            for var_id, op, val in conds
+            f"x_{int(var_id)} {op} {float(val):.6g}" for var_id, op, val in conds
         )
 
     def _store_tree_snapshot(self, node_records, results, incumbent):
@@ -215,10 +213,12 @@ class BranchAndBoundRevamped:
         incumbent = snapshot.get("incumbent")
         incumbent_str = "None" if incumbent is None else f"{float(incumbent):.6f}"
         lines = [
-            "[bnb-tree] "
-            f"nodes={len(nodes)} "
-            f"pool_nodes={len(snapshot.get('pool_node_ids', []))} "
-            f"incumbent={incumbent_str}"
+            (
+                "[bnb-tree] "
+                f"nodes={len(nodes)} "
+                f"pool_nodes={len(snapshot.get('pool_node_ids', []))} "
+                f"incumbent={incumbent_str}"
+            )
         ]
 
         def _render(node, prefix, is_last):
@@ -262,7 +262,7 @@ class BranchAndBoundRevamped:
 
         return "\n".join(lines)
 
-    def optimize_node(self,node):
+    def optimize_node(self, node):
         return linprog(
             node["c"],
             node["A_ub"],
@@ -270,16 +270,16 @@ class BranchAndBoundRevamped:
             node["A_eq"],
             node["b_eq"],
             node["bounds"],
-            )
+        )
 
-# Handle infeasible sub sol
-# Add parent and child relation
+    # Handle infeasible sub sol
+    # Add parent and child relation
 
-    def branch(self,bounds,x,integer):
+    def branch(self, bounds, x, integer):
         # need to remove non integer
-        # x = x[self.integer] 
+        # x = x[self.integer]
         diff = np.abs(x) - np.floor(np.abs(x))
-        diff = [val if isint else 0 for val,isint in zip(diff,integer)]
+        diff = [val if isint else 0 for val, isint in zip(diff, integer)]
         # diff = [np.abs(xi - round(xi)) if isint else 0 for xi, isint in zip(x, self.integer)]
         if max(diff) < 1e-6:
             return None, None
@@ -288,28 +288,27 @@ class BranchAndBoundRevamped:
         left_branch = copy(bounds)
         right_branch = copy(bounds)
 
-        left_branch[branch_var] =  (left_branch[branch_var][0],floor(x[branch_var]))
+        left_branch[branch_var] = (left_branch[branch_var][0], floor(x[branch_var]))
         right_branch[branch_var] = (ceil(x[branch_var]), right_branch[branch_var][1])
 
-        return left_branch,right_branch,branch_var
+        return left_branch, right_branch, branch_var
 
-        
     # def all_integer(self,x):
     #    return all( [not(var.is_integer() ^ bool(i)) for var,i in zip(x,self.integer)])
-    def all_integer(self, x,integer):
-        return all((np.abs(var - round(var)) < 1e-6) if i else True for var, i in zip(x,integer))
+    def all_integer(self, x, integer):
+        return all(
+            (np.abs(var - round(var)) < 1e-6) if i else True
+            for var, i in zip(x, integer)
+        )
 
-
-
-    def solve(self,init_node):
+    def solve(self, init_node):
         verbose = self.verbose
         results = []
         queue = deque()
         self.last_tree_snapshot = None
         node_records = {}
         next_node_id = 0
-        
-        
+
         res = self.optimize_node(init_node)
         if not res.success:
             # print(res)
@@ -317,55 +316,57 @@ class BranchAndBoundRevamped:
             return None
         # self.tree.append(self.init_node)
         iter = 1
-        integer  = init_node["integer"]
+        integer = init_node["integer"]
         node_records[0] = {
             "node_id": 0,
             "parent": None,
             "depth": 0,
             "lp_obj": float(res.fun),
-            "status": "root_integral" if self.all_integer(res.x,integer) else "branched",
+            "status": "root_integral"
+            if self.all_integer(res.x, integer)
+            else "branched",
             "branching_decision": None,
             "conds": [],
         }
-        
-        if self.all_integer(res.x,integer):
-   
+
+        if self.all_integer(res.x, integer):
             # print(f"Number of nodes explored: {iter}")
 
-            results.append(  
-                           
-                {       
-                    "fun" : res.fun,
-                    "x" : res.x ,
-                    "eqlin" : _normalize_linprog_duals(res.eqlin.marginals, init_node["A_eq"]),
-                    "ineqlin" : _normalize_linprog_duals(res.ineqlin.marginals, init_node["A_ub"]),
-                    "lower" : res.lower.marginals,
-                    "upper" : res.upper.marginals,
-                    "fathomed" : False,
-                    "node" : init_node,
-                    "bounds" : init_node["bounds"],
+            results.append(
+                {
+                    "fun": res.fun,
+                    "x": res.x,
+                    "eqlin": _normalize_linprog_duals(
+                        res.eqlin.marginals, init_node["A_eq"]
+                    ),
+                    "ineqlin": _normalize_linprog_duals(
+                        res.ineqlin.marginals, init_node["A_ub"]
+                    ),
+                    "lower": res.lower.marginals,
+                    "upper": res.upper.marginals,
+                    "fathomed": False,
+                    "node": init_node,
+                    "bounds": init_node["bounds"],
                     "conds": [],
                     "node_id": 0,
-
                 }
-                
             )
 
             self._store_tree_snapshot(node_records, results, float(res.fun))
 
             return results
-        
+
         ub = float("inf")
-        
-        l,r,branch_var = self.branch(init_node["bounds"],res.x,integer)
+
+        l, r, branch_var = self.branch(init_node["bounds"], res.x, integer)
         if l is None or r is None:
             node_records[0]["status"] = "fractional_unbranched"
             self._store_tree_snapshot(node_records, results, ub)
             return results
         l_val = l[branch_var][1]
         r_val = r[branch_var][0]
-        l_cond = [(branch_var,"<=",l_val)]
-        r_cond = [(branch_var,">=",r_val)]
+        l_cond = [(branch_var, "<=", l_val)]
+        r_cond = [(branch_var, ">=", r_val)]
         next_node_id += 1
         left_node = {
             "node_id": next_node_id,
@@ -373,7 +374,11 @@ class BranchAndBoundRevamped:
             "depth": 1,
             "bounds": l,
             "conds": l_cond,
-            "branching_decision": {"var": int(branch_var), "type": "<=", "value": float(l_val)},
+            "branching_decision": {
+                "var": int(branch_var),
+                "type": "<=",
+                "value": float(l_val),
+            },
         }
         node_records[left_node["node_id"]] = {
             "node_id": left_node["node_id"],
@@ -391,7 +396,11 @@ class BranchAndBoundRevamped:
             "depth": 1,
             "bounds": r,
             "conds": r_cond,
-            "branching_decision": {"var": int(branch_var), "type": ">=", "value": float(r_val)},
+            "branching_decision": {
+                "var": int(branch_var),
+                "type": ">=",
+                "value": float(r_val),
+            },
         }
         node_records[right_node["node_id"]] = {
             "node_id": right_node["node_id"],
@@ -404,23 +413,23 @@ class BranchAndBoundRevamped:
         }
         queue.append(left_node)
         queue.append(right_node)
-        
+
         while len(queue) > 0:
             iter += 1
             queued_node = queue.popleft()
             bounds = queued_node["bounds"]
             conds = queued_node["conds"]
             node = {
-                "c" : init_node["c"],
-                "A_ub" : init_node["A_ub"],
-                "b_ub" : init_node["b_ub"],
-                "A_eq" : init_node["A_eq"],
-                "b_eq" : init_node["b_eq"],
-                "bounds" : bounds
+                "c": init_node["c"],
+                "A_ub": init_node["A_ub"],
+                "b_ub": init_node["b_ub"],
+                "A_eq": init_node["A_eq"],
+                "b_eq": init_node["b_eq"],
+                "bounds": bounds,
             }
             res = self.optimize_node(node)
             record = node_records[queued_node["node_id"]]
-            
+
             if verbose:
                 print(node)
 
@@ -432,40 +441,42 @@ class BranchAndBoundRevamped:
 
             record["lp_obj"] = float(res.fun)
 
-            if self.all_integer(res.x,integer):
+            if self.all_integer(res.x, integer):
                 if res.fun <= ub:
                     ub = res.fun
                     record["status"] = "integer_incumbent"
-                    results.append(  
-                                    
-                        {       
-                            "fun" : res.fun,
-                            "x" : res.x ,
-                            "eqlin" : _normalize_linprog_duals(res.eqlin.marginals, init_node["A_eq"]),
-                            "ineqlin" : _normalize_linprog_duals(res.ineqlin.marginals, init_node["A_ub"]),
-                            "lower" : res.lower.marginals,
-                            "upper" : res.upper.marginals,
-                            "fathomed" : False,
-                            "conds" : conds,
-                            "node" : node,
-                            "bounds" : bounds,
-                            "node_id": queued_node["node_id"]
+                    results.append(
+                        {
+                            "fun": res.fun,
+                            "x": res.x,
+                            "eqlin": _normalize_linprog_duals(
+                                res.eqlin.marginals, init_node["A_eq"]
+                            ),
+                            "ineqlin": _normalize_linprog_duals(
+                                res.ineqlin.marginals, init_node["A_ub"]
+                            ),
+                            "lower": res.lower.marginals,
+                            "upper": res.upper.marginals,
+                            "fathomed": False,
+                            "conds": conds,
+                            "node": node,
+                            "bounds": bounds,
+                            "node_id": queued_node["node_id"],
                         }
-                        
                     )
                 else:
                     record["status"] = "integer_pruned"
 
             elif res.fun <= ub:
                 record["status"] = "branched"
-                l,r,branch_var = self.branch(bounds,res.x,integer)
+                l, r, branch_var = self.branch(bounds, res.x, integer)
                 if l is None or r is None:
                     record["status"] = "fractional_unbranched"
                     continue
                 l_val = l[branch_var][1]
                 r_val = r[branch_var][0]
-                l_cond = conds + [(branch_var,"<=",l_val)]
-                r_cond =  conds + [(branch_var,">=",r_val)]
+                l_cond = conds + [(branch_var, "<=", l_val)]
+                r_cond = conds + [(branch_var, ">=", r_val)]
                 next_node_id += 1
                 left_node = {
                     "node_id": next_node_id,
@@ -473,7 +484,11 @@ class BranchAndBoundRevamped:
                     "depth": queued_node["depth"] + 1,
                     "bounds": l,
                     "conds": l_cond,
-                    "branching_decision": {"var": int(branch_var), "type": "<=", "value": float(l_val)},
+                    "branching_decision": {
+                        "var": int(branch_var),
+                        "type": "<=",
+                        "value": float(l_val),
+                    },
                 }
                 node_records[left_node["node_id"]] = {
                     "node_id": left_node["node_id"],
@@ -491,7 +506,11 @@ class BranchAndBoundRevamped:
                     "depth": queued_node["depth"] + 1,
                     "bounds": r,
                     "conds": r_cond,
-                    "branching_decision": {"var": int(branch_var), "type": ">=", "value": float(r_val)},
+                    "branching_decision": {
+                        "var": int(branch_var),
+                        "type": ">=",
+                        "value": float(r_val),
+                    },
                 }
                 node_records[right_node["node_id"]] = {
                     "node_id": right_node["node_id"],
@@ -506,32 +525,28 @@ class BranchAndBoundRevamped:
                 queue.append(right_node)
             else:
                 record["status"] = "fathomed_by_bound"
-                
-                results.append(  
-                                    
-                    {       
-                        "fun" : res.fun,
-                        "x" : res.x ,
-                        "eqlin" : _normalize_linprog_duals(res.eqlin.marginals, init_node["A_eq"]),
-                        "ineqlin" : _normalize_linprog_duals(res.ineqlin.marginals, init_node["A_ub"]),
-                        "lower" : res.lower.marginals,
-                        "upper" : res.upper.marginals,
-                        "fathomed" : True,
-                        "conds" : conds,
-                        "node" : node,
-                        "bounds" : bounds,
-                        "node_id": queued_node["node_id"]
 
-                        
-                        
+                results.append(
+                    {
+                        "fun": res.fun,
+                        "x": res.x,
+                        "eqlin": _normalize_linprog_duals(
+                            res.eqlin.marginals, init_node["A_eq"]
+                        ),
+                        "ineqlin": _normalize_linprog_duals(
+                            res.ineqlin.marginals, init_node["A_ub"]
+                        ),
+                        "lower": res.lower.marginals,
+                        "upper": res.upper.marginals,
+                        "fathomed": True,
+                        "conds": conds,
+                        "node": node,
+                        "bounds": bounds,
+                        "node_id": queued_node["node_id"],
                     }
-                        
                 )
-                
-                
-                
+
         if verbose:
             print(f"Number of nodes explored: {iter}")
         self._store_tree_snapshot(node_records, results, ub)
         return results
-

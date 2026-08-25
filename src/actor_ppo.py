@@ -106,9 +106,13 @@ class PPOActor:
 
         if chosen_sol["fathomed"]:
             if self.nn_sample:
-                action, bounds = nn_branch_sample(chosen_sol["x"][self.desc_vars], bounds)
+                action, bounds = nn_branch_sample(
+                    chosen_sol["x"][self.desc_vars], bounds
+                )
             else:
-                action, bounds = naive_branch_sample(chosen_sol["x"][self.desc_vars], bounds)
+                action, bounds = naive_branch_sample(
+                    chosen_sol["x"][self.desc_vars], bounds
+                )
         else:
             action = chosen_sol["x"][self.desc_vars]
 
@@ -127,7 +131,9 @@ class PPOActor:
 
         lag_grads = np.array(lag_grads)
         lag_grad_action_drawn = lag_grads[draw]
-        nab = nabla_log_pi_stable(lag_grad_action_drawn, obj_values, lag_grads, self.beta)
+        nab = nabla_log_pi_stable(
+            lag_grad_action_drawn, obj_values, lag_grads, self.beta
+        )
 
         grad_diversity = float(np.mean(np.var(lag_grads, axis=0)))
 
@@ -177,7 +183,9 @@ class PPOActor:
         ]
         lag_grads = np.asarray(lag_grads)
         lag_grad_action_drawn = lag_grads[draw]
-        nab = nabla_log_pi_stable(lag_grad_action_drawn, obj_values, lag_grads, self.beta)
+        nab = nabla_log_pi_stable(
+            lag_grad_action_drawn, obj_values, lag_grads, self.beta
+        )
 
         return {
             "nab": nab,
@@ -203,7 +211,9 @@ class PPOActor:
             rewards = np.array(self.buffer.rewards)[indexes]
             actions = np.array(self.buffer.actions)[indexes]
             states = np.array(self.buffer.states, dtype=float)[indexes]
-            nxt_states = torch.tensor(np.array(self.buffer.nxt_states, dtype=float))[indexes]
+            nxt_states = torch.tensor(np.array(self.buffer.nxt_states, dtype=float))[
+                indexes
+            ]
 
             self.critic.train(rewards, actions, states, nxt_states)
             advantages = self.critic.evaluate(actions, states, rewards, nxt_states)
@@ -211,7 +221,9 @@ class PPOActor:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
             old_logps = np.asarray(self.buffer.logp_old)[indexes]
-            chosen_desc_actions = np.asarray(self.buffer.chosen_desc_actions, dtype=float)[indexes]
+            chosen_desc_actions = np.asarray(
+                self.buffer.chosen_desc_actions, dtype=float
+            )[indexes]
 
             n_data = len(indexes)
             if n_data == 0:
@@ -252,7 +264,11 @@ class PPOActor:
                         )
                         unclipped = ratio * adv
                         clipped = clipped_ratio * adv
-                        active = (unclipped <= clipped) if adv >= 0 else (unclipped >= clipped)
+                        active = (
+                            (unclipped <= clipped)
+                            if adv >= 0
+                            else (unclipped >= clipped)
+                        )
 
                         scale = -ratio * adv if active else 0.0
                         grad_i = scale * sample_eval["nab"]
@@ -262,7 +278,7 @@ class PPOActor:
                         if batch_grad is None:
                             batch_grad = np.zeros_like(grad_i)
                         batch_grad += grad_i
-                        approx_kl_mb += (logp_old - logp_new)
+                        approx_kl_mb += logp_old - logp_new
                         entropy_mb += sample_eval["entropy"]
                         used_count += 1
 
@@ -320,7 +336,9 @@ class PPOActor:
         if chosen_desc_action is None:
             self.buffer.chosen_desc_actions.append(np.array([], dtype=float))
         else:
-            self.buffer.chosen_desc_actions.append(np.array(chosen_desc_action, copy=True))
+            self.buffer.chosen_desc_actions.append(
+                np.array(chosen_desc_action, copy=True)
+            )
 
 
 class ExperienceBufferPPO:

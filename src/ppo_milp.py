@@ -171,7 +171,9 @@ class PPOMILP:
         self.value_net = ValueNetwork(
             obs_dim=state_dim, hidden_dim=hidden_dim, activation=activation
         ).to(self.device)
-        self.value_optimizer = torch.optim.Adam(self.value_net.parameters(), lr=critic_lr)
+        self.value_optimizer = torch.optim.Adam(
+            self.value_net.parameters(), lr=critic_lr
+        )
 
         self.buffer = PPOBuffer()
 
@@ -197,7 +199,9 @@ class PPOMILP:
         self.model.b = theta[idx : idx + b_size].reshape(self.model.b.shape)
 
     def _value(self, state: np.ndarray) -> float:
-        state_t = torch.as_tensor(state, dtype=torch.float32, device=self.device).view(1, -1)
+        state_t = torch.as_tensor(state, dtype=torch.float32, device=self.device).view(
+            1, -1
+        )
         with torch.no_grad():
             return float(self.value_net(state_t).squeeze().item())
 
@@ -294,10 +298,16 @@ class PPOMILP:
 
         if self.use_gae:
             gae = 0.0
-            vals_ext = np.concatenate([values, np.array([last_value], dtype=np.float64)])
+            vals_ext = np.concatenate(
+                [values, np.array([last_value], dtype=np.float64)]
+            )
             for t in reversed(range(len(rewards))):
                 non_terminal = 1.0 - float(dones[t])
-                delta = rewards[t] + self.gamma * vals_ext[t + 1] * non_terminal - vals_ext[t]
+                delta = (
+                    rewards[t]
+                    + self.gamma * vals_ext[t + 1] * non_terminal
+                    - vals_ext[t]
+                )
                 gae = delta + self.gamma * self.gae_lambda * non_terminal * gae
                 advantages[t] = gae
                 returns[t] = gae + vals_ext[t]
@@ -401,7 +411,9 @@ class PPOMILP:
 
                 use_unclipped = unclipped_obj <= clipped_obj
                 grad_terms = (ratio * adv_b)[:, None] * score_b
-                actor_grad = grad_terms[use_unclipped].sum(axis=0) / max(1, len(batch_idx))
+                actor_grad = grad_terms[use_unclipped].sum(axis=0) / max(
+                    1, len(batch_idx)
+                )
 
                 actor_grad = self._clip_grad(actor_grad)
                 theta = theta + self.actor_lr * actor_grad
@@ -418,7 +430,9 @@ class PPOMILP:
                 )
                 # ------------------
                 if self.target_kl > 0 and abs(approx_kl) > 1.5 * self.target_kl:
-                    print(f"  [PPO] early stop: approx_kl={approx_kl:.6f} > 1.5*target_kl={1.5*self.target_kl:.6f}")
+                    print(
+                        f"  [PPO] early stop: approx_kl={approx_kl:.6f} > 1.5*target_kl={1.5 * self.target_kl:.6f}"
+                    )
                     stop_actor = True
 
                 with torch.no_grad():

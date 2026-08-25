@@ -1,5 +1,3 @@
-
-
 # Taken from https://campus.datacamp.com/courses/deep-reinforcement-learning-in-python/deep-q-learning?ex=3
 
 # class ReplayBuffer:
@@ -8,7 +6,7 @@
 #     def push(self, state, action, reward, next_state, done):
 #         experience_tuple = (state, action, reward, next_state, done)
 #         # Append experience_tuple to the memory buffer
-#         self.memory.____    
+#         self.memory.____
 #     def __len__(self):
 #         return len(self.memory)
 #     def sample(self, batch_size):

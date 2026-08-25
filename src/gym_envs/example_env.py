@@ -1,47 +1,53 @@
-
 import gymnasium as gym
 import numpy as np
 
 
 class Arb_binary(gym.Env):
-
-    def __init__(self,c,p,A,B,C,D,E,pf,a_space_size,noise = False,std = 0):
-        self.c = c 
+    def __init__(self, c, p, A, B, C, D, E, pf, a_space_size, noise=False, std=0):
+        self.c = c
         self.A = A
-        self.B = B 
-        self.C = C 
-        self.D = D 
-        self.E = E 
+        self.B = B
+        self.C = C
+        self.D = D
+        self.E = E
         self.pf = pf
         self.p = p
-        self.observation_space = gym.spaces.Box(low = -10*np.ones((A.shape[1],)),high = 10* np.ones((A.shape[1],)))
-        self.init_space = gym.spaces.Box(low = np.zeros((A.shape[1],)),high = 8* np.ones((A.shape[1],)))
-        self.action_space = gym.spaces.MultiDiscrete(a_space_size * np.ones((B.shape[1],)))
+        self.observation_space = gym.spaces.Box(
+            low=-10 * np.ones((A.shape[1],)), high=10 * np.ones((A.shape[1],))
+        )
+        self.init_space = gym.spaces.Box(
+            low=np.zeros((A.shape[1],)), high=8 * np.ones((A.shape[1],))
+        )
+        self.action_space = gym.spaces.MultiDiscrete(
+            a_space_size * np.ones((B.shape[1],))
+        )
         self.state = None
         self.std = std
         self.t = 1
+
     def _get_obs(self):
         pass
-    def reset(self,seed = None):
-        super().reset(seed  = seed)
+
+    def reset(self, seed=None):
+        super().reset(seed=seed)
 
         self.state = self.init_space.sample()
         while np.any(self.C @ self.state >= self.E):
             self.state = self.init_space.sample()
         # self.state = np.zeros((self.A.shape[1]))
         self.t = 1
-        return self.state,None
-    
-    def step(self,action,gen_noise = False):
+        return self.state, None
+
+    def step(self, action, gen_noise=False):
         if not self.action_space.contains(action):
             raise Exception("Action does not belong to action space")
         # Noise = ...
-        noise = np.random.normal(0,self.std,self.state.shape)
-        
+        noise = np.random.normal(0, self.std, self.state.shape)
+
         nxt_state = self.A @ self.state + self.B @ action + noise
-        slack =  self.C @ self.state + self.D @ action - self.E
+        slack = self.C @ self.state + self.D @ action - self.E
         self.t += 1
-        penalty = (slack[slack > 0]*self.pf).max() if np.any(slack > 0) else 0
+        penalty = (slack[slack > 0] * self.pf).max() if np.any(slack > 0) else 0
         reward = self.c @ action + self.p @ nxt_state - penalty
         # reward = self.c @ action + self.p @ nxt_state -np.sum(slack[slack > 0]*self.pf)
         # reward = self.c @ action + self.p @ nxt_state
@@ -64,46 +70,38 @@ class Arb_binary(gym.Env):
         # #     terminated = True
         # if not self.observation_space.contains(nxt_state.astype(np.float32)):
         #     terminated = True
-            # nxt_state,_ = self.reset()
-            # nxt_state = np.array([9,9,8])
-        
+        # nxt_state,_ = self.reset()
+        # nxt_state = np.array([9,9,8])
+
         # old_state = int(''.join(map(str, self.state.astype(int))))
         old_state = np.array([self.state])
         # new_state = int(''.join(map(str, nxt_state.astype(int))))
         self.state = nxt_state
-        action_index = int(''.join(map(str, action.astype(int))))
-        
+        action_index = int("".join(map(str, action.astype(int))))
+
         # if np.all(np.abs(old_state - nxt_state) < 1e-3):
         #     terminated = True
         if self.t > 10:
             terminated = True
         if terminated:
             # nxt_state = -1 * np.ones_like(self.state)
-            nxt_state = np.array([np.nan]*len(self.state))
+            nxt_state = np.array([np.nan] * len(self.state))
             # nxt_state = None
 
-        info = {
-        "action" : action_index,
-        "old_state" : old_state,
-        "new_state" : nxt_state
-        }
-        
+        info = {"action": action_index, "old_state": old_state, "new_state": nxt_state}
+
         reward = -reward
 
-     
-        return self.state,reward,terminated,False,info
-    
+        return self.state, reward, terminated, False, info
+
     def action_to_index(self, action):
         if np.sum(action) == 0:
             return len(action)
         else:
             return np.argmax(action)
-    def state_to_index(self,state):
-        return int(''.join(map(str, state.astype(int))), 2)
-    
-    
 
-
+    def state_to_index(self, state):
+        return int("".join(map(str, state.astype(int))), 2)
 
 
 # c =- np.array([1,2,2,5,1])

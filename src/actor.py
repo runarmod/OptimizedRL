@@ -18,12 +18,13 @@ from src.utils.policy import (
 #     return (p.cumsum(-1) >= np.random.uniform(size=p.shape[:-1])[..., None]).argmax(-1)
 
 
-def dLdx(c,A_ub,A_eq,ineq,eq,upper,lower):
+def dLdx(c, A_ub, A_eq, ineq, eq, upper, lower):
     A_ub = np.array([]) if A_ub is None else A_ub
     A_eq = np.array([]) if A_eq is None else A_eq
     # return c - ineq @ A_ub - eq @ A_eq - upper + lower
 
     return c - ineq @ A_ub - eq @ A_eq - upper - lower
+
 
 def calc_actual_grad(node):
     sol = linprog(
@@ -32,16 +33,15 @@ def calc_actual_grad(node):
         node["b_ub"],
         node["A_eq"],
         node["b_eq"],
-        node["bounds"]
+        node["bounds"],
     )
     ineq = sol.ineqlin.marginals
     eq = sol.ineqlin.marginals
-    return ineq,eq
- 
+    return ineq, eq
 
 
 # def dLdx_2(c,aA,aB,b,ineq,upper,lower):
-#     dLdxt = c -ineq @ aB - upper - lower 
+#     dLdxt = c -ineq @ aB - upper - lower
 #     # return c - ineq @ A_ub - eq @ A_eq - upper + lower
 
 #     return c - ineq @ A_ub - eq @ A_eq - upper - lower
@@ -53,7 +53,6 @@ def calc_actual_grad(node):
 # dphidtheta = torch.rand((4,2)) #
 # dphidtheta_np = dphidtheta.numpy()
 # dphidtheta.requires_grad = True
-
 
 
 # print(vals)
@@ -75,30 +74,39 @@ def calc_actual_grad(node):
 # print(f"Error between manual and PyTorch gradients: {error}")
 # print(nab,expected_nabla_log_pi)
 
-def check_corr_grad(obj_vals,nab,beta,lag_grads,draw): # This doesnt work with sampled nab probably because htat one gradient is wrong specfically
-    obj_vals_torch = torch.tensor(obj_vals,requires_grad= True)
-    pol = policy_dist_torch(obj_vals_torch,beta)
+
+def check_corr_grad(
+    obj_vals, nab, beta, lag_grads, draw
+):  # This doesnt work with sampled nab probably because htat one gradient is wrong specfically
+    obj_vals_torch = torch.tensor(obj_vals, requires_grad=True)
+    pol = policy_dist_torch(obj_vals_torch, beta)
     log_pol = torch.log(pol)
-    log_pol[draw].backward() # dpi/dphi
+    log_pol[draw].backward()  # dpi/dphi
     grad_log_pol = obj_vals_torch.grad
     expected = grad_log_pol @ torch.as_tensor(lag_grads, dtype=grad_log_pol.dtype)
     assert np.linalg.norm(nab - expected.detach().numpy()) < 1e-6
 
 
-def check_with_cvxpylayers(node,bounds,lag_grad,drawn_x,state):
-    c_b = torch.tensor(node["c"],requires_grad=True)  # Objective function
+def check_with_cvxpylayers(node, bounds, lag_grad, drawn_x, state):
+    c_b = torch.tensor(node["c"], requires_grad=True)  # Objective function
 
     A_ub_b = torch.tensor(node["A_ub"], requires_grad=True)
     b_ub_b = torch.tensor(node["b_ub"], requires_grad=True)
 
     solver_args = {
-        'max_iters': 50000,  # Increase max iterations (default is often 2500)
+        "max_iters": 50000,  # Increase max iterations (default is often 2500)
         # 'eps': 1e-5,      # Adjust tolerance if needed (SCS default is 1e-4)
         # 'verbose': True,   # Set to True to get detailed solver output for debugging
-        'solve_method' : 'ECOS'
+        "solve_method": "ECOS",
     }
-    lb_b = torch.tensor([bound[0] if bound[0] is not None else -1e3 for bound in bounds],dtype=torch.float64)
-    ub_b = torch.tensor([bound[1] if bound[1] is not None else 1e3 for bound in bounds],dtype=torch.float64)
+    lb_b = torch.tensor(
+        [bound[0] if bound[0] is not None else -1e3 for bound in bounds],
+        dtype=torch.float64,
+    )
+    ub_b = torch.tensor(
+        [bound[1] if bound[1] is not None else 1e3 for bound in bounds],
+        dtype=torch.float64,
+    )
     x = cp.Variable(c_b.shape[0])
     c = cp.Parameter(c_b.shape[0])  # ✅ Change to Parameter
     A_ub = cp.Parameter(A_ub_b.shape)
@@ -112,33 +120,57 @@ def check_with_cvxpylayers(node,bounds,lag_grad,drawn_x,state):
     problem = cp.Problem(objective, constraints)
     assert problem.is_dpp()  # ✅ Now this should pass
 
-    cvxpylayer = CvxpyLayer(problem, parameters=[c,A_ub, b_ub,lb,ub], variables=[x])
-    solution, = cvxpylayer(c_b, A_ub_b, b_ub_b,lb_b,ub_b,solver_args = solver_args)
-    objective_value = (c_b @ solution)
+    cvxpylayer = CvxpyLayer(problem, parameters=[c, A_ub, b_ub, lb, ub], variables=[x])
+    (solution,) = cvxpylayer(c_b, A_ub_b, b_ub_b, lb_b, ub_b, solver_args=solver_args)
+    objective_value = c_b @ solution
     objective_value.backward()
     # assert all(torch.abs(c_b.grad[:3] - lag_grad[:3]) < 1e-3)
     if (
-            not all(torch.abs(c_b.grad[:3] - lag_grad[:3]) < 1e-3)
-            or  not all(torch.abs(A_ub_b.grad[:7,:3].flatten() - lag_grad[45:66]) < 1e-3)
-            or not all(torch.abs(b_ub_b.grad[:7] + lag_grad[-7:]) < 1e-3) 
-            or not all(torch.abs((b_ub_b.grad[:7].unsqueeze(0).T @ torch.tensor(state,dtype = torch.double).unsqueeze(0)).flatten() + lag_grad[3:45]) < 1e-3)
-        ):
+        not all(torch.abs(c_b.grad[:3] - lag_grad[:3]) < 1e-3)
+        or not all(torch.abs(A_ub_b.grad[:7, :3].flatten() - lag_grad[45:66]) < 1e-3)
+        or not all(torch.abs(b_ub_b.grad[:7] + lag_grad[-7:]) < 1e-3)
+        or not all(
+            torch.abs(
+                (
+                    b_ub_b.grad[:7].unsqueeze(0).T
+                    @ torch.tensor(state, dtype=torch.double).unsqueeze(0)
+                ).flatten()
+                + lag_grad[3:45]
+            )
+            < 1e-3
+        )
+    ):
         pass
-    true_grad = torch.hstack((c_b.grad[:3],A_ub_b.grad[:7,:3].flatten(),-b_ub_b.grad[:7],-(b_ub_b.grad[:7].unsqueeze(0).T @ torch.tensor(state,dtype = torch.double).unsqueeze(0)).flatten()))
+    true_grad = torch.hstack(
+        (
+            c_b.grad[:3],
+            A_ub_b.grad[:7, :3].flatten(),
+            -b_ub_b.grad[:7],
+            -(
+                b_ub_b.grad[:7].unsqueeze(0).T
+                @ torch.tensor(state, dtype=torch.double).unsqueeze(0)
+            ).flatten(),
+        )
+    )
     return true_grad
-    
-
 
     # # Equality constraint: x1 + x2 = 2
     # A_eq_b = torch.tensor([[1, 1]], requires_grad=True, dtype=torch.float32)
     # b_eq_b = torch.tensor([2], requires_grad=True, dtype=torch.float32)
 
 
-
-
-
 class Actor:
-    def __init__(self,model,solver,critic,beta = 1,lr = 0.01,df = 0.9,nn_sample = False,sampled_grad = False):
+    def __init__(
+        self,
+        model,
+        solver,
+        critic,
+        beta=1,
+        lr=0.01,
+        df=0.9,
+        nn_sample=False,
+        sampled_grad=False,
+    ):
         self.model = model
 
         self.desc_vars = self.model.get_desc_var_indices()
@@ -159,21 +191,36 @@ class Actor:
         self.v = None
         self.reset_critic_iter = 0
 
-    def act(self,new_state):
+    def act(self, new_state):
         # Compute next action
         self.model.update_state(new_state)
         node = self.model.get_LP_formulation()
 
-        sol_pool = self.solver.solve(node) # Has to return an array of dicts that include the action x, the obj func, and marginals
+        sol_pool = self.solver.solve(
+            node
+        )  # Has to return an array of dicts that include the action x, the obj func, and marginals
 
         if sol_pool is None:
             return None
         for sol in sol_pool:
-            if np.any(np.abs(dLdx(node["c"],node["A_ub"],node["A_eq"],sol["ineqlin"],sol["eqlin"],sol["upper"],sol["lower"])) > 1e-4 ):
+            if np.any(
+                np.abs(
+                    dLdx(
+                        node["c"],
+                        node["A_ub"],
+                        node["A_eq"],
+                        sol["ineqlin"],
+                        sol["eqlin"],
+                        sol["upper"],
+                        sol["lower"],
+                    )
+                )
+                > 1e-4
+            ):
                 raise Exception("dLdx isnt 0")
 
-        obj_values =np.array( [sol["fun"] for sol in sol_pool])
-        pol = policy_dist_np(obj_values,self.beta)
+        obj_values = np.array([sol["fun"] for sol in sol_pool])
+        pol = policy_dist_np(obj_values, self.beta)
 
         draw = categorical(pol)
         chosen_sol = sol_pool[draw]
@@ -181,49 +228,60 @@ class Actor:
         # Sample unexplored nodes
         if chosen_sol["fathomed"]:
             if self.nn_sample:
-                action,bounds = knn_branch_sample(chosen_sol['x'][self.desc_vars],bounds)
+                action, bounds = knn_branch_sample(
+                    chosen_sol["x"][self.desc_vars], bounds
+                )
             else:
-                action,bounds = naive_branch_sample(chosen_sol['x'][self.desc_vars],bounds)
+                action, bounds = naive_branch_sample(
+                    chosen_sol["x"][self.desc_vars], bounds
+                )
 
         else:
             action = chosen_sol["x"]
             action = action[self.desc_vars]
 
-
-
-
-
         # Compute model specific gradient
 
         actions = [sol["x"][self.desc_vars] for sol in sol_pool]
-        ineq_margs = [np.array(sol["ineqlin"]) for sol in sol_pool] # negative signs here could be wrong
-        eq_margs = [np.array(sol["eqlin"]) for sol in sol_pool] #negative signs here could be wrong
-        lag_grads = [self.model.lagrange_gradient(a,new_state,eq_marg,ineq_marg) for a,ineq_marg,eq_marg in zip(actions,ineq_margs,eq_margs)]
+        ineq_margs = [
+            np.array(sol["ineqlin"]) for sol in sol_pool
+        ]  # negative signs here could be wrong
+        eq_margs = [
+            np.array(sol["eqlin"]) for sol in sol_pool
+        ]  # negative signs here could be wrong
+        lag_grads = [
+            self.model.lagrange_gradient(a, new_state, eq_marg, ineq_marg)
+            for a, ineq_marg, eq_marg in zip(actions, ineq_margs, eq_margs)
+        ]
 
         # Convert action solution to actual action
         if self.sampled_grad:
             node["bounds"] = bounds
-            ineq,eq = calc_actual_grad(node)
-            lag_grad_action_drawn = self.model.lagrange_gradient(action,new_state,ineq,eq)
-            lag_grads[draw] = lag_grad_action_drawn            
+            ineq, eq = calc_actual_grad(node)
+            lag_grad_action_drawn = self.model.lagrange_gradient(
+                action, new_state, ineq, eq
+            )
+            lag_grads[draw] = lag_grad_action_drawn
         lag_grads = np.array(lag_grads)
         # Compute policy sensitivity
         lag_grad_action_drawn = lag_grads[draw]
         # old_nab = nabla_log_pi(lag_grad_action_drawn,obj_values,lag_grads,self.beta)
-        nab = nabla_log_pi_stable(lag_grad_action_drawn,obj_values,lag_grads,self.beta)
-        check_corr_grad(obj_values,nab,self.beta,lag_grads,draw) 
+        nab = nabla_log_pi_stable(
+            lag_grad_action_drawn, obj_values, lag_grads, self.beta
+        )
+        check_corr_grad(obj_values, nab, self.beta, lag_grads, draw)
 
         t_nab = 0
 
         info = {
-            "fathomed" : chosen_sol["fathomed"],
-            "nab" : nab,
-            "n_sols" : len(sol_pool),
-            "t_nab" : t_nab
+            "fathomed": chosen_sol["fathomed"],
+            "nab": nab,
+            "n_sols": len(sol_pool),
+            "t_nab": t_nab,
         }
-        return action,info
+        return action, info
 
-    def train(self,iters = 1000,sample = False,num_samples = 0.5):
+    def train(self, iters=1000, sample=False, num_samples=0.5):
 
         # Not sure how q_table should be trained
 
@@ -231,10 +289,9 @@ class Actor:
 
         if size == 0:
             raise Exception("Buffers are empty")
-        for _ in tqdm(range(iters),leave=False,desc = "Training"):
+        for _ in tqdm(range(iters), leave=False, desc="Training"):
             if sample:
-
-                indexes = np.array(range(int(size*num_samples)))
+                indexes = np.array(range(int(size * num_samples)))
                 np.random.shuffle(indexes)
             else:
                 indexes = np.array(range(size))
@@ -245,28 +302,22 @@ class Actor:
             nxt_states = torch.tensor(self.buffer.nxt_states)[indexes]
             nabs = np.array(self.buffer.nabs)[indexes]
             t_nabs = np.array(self.buffer.t_nabs)[indexes]
-         
-            self.critic.train(rewards,actions,states,nxt_states)
 
+            self.critic.train(rewards, actions, states, nxt_states)
 
+            qualities = self.critic.evaluate(actions, states, rewards, nxt_states)
 
-
-            qualities = self.critic.evaluate(actions,states,rewards,nxt_states)
-
-            pol_grad = ((nabs.T @ qualities)/len(rewards)).squeeze()
+            pol_grad = ((nabs.T @ qualities) / len(rewards)).squeeze()
             if self.v is None:
                 self.v = np.zeros_like(pol_grad)
             if self.m is None:
                 self.m = np.zeros_like(pol_grad)
 
-            self.model.update_params(pol_grad,self.lr)
+            self.model.update_params(pol_grad, self.lr)
         self.buffer.reset()
         return pol_grad
 
-
-
-
-    def update_buffers(self,reward,action,state,new_state,nab,t_nab):
+    def update_buffers(self, reward, action, state, new_state, nab, t_nab):
         self.buffer.rewards.append(reward)
         self.buffer.actions.append(action)
         self.buffer.states.append(state)
@@ -278,15 +329,16 @@ class Actor:
         # del self.nab
 
 
-
 def normalize(v):
     norm = np.linalg.norm(v)
-    if norm == 0: 
-       return v
+    if norm == 0:
+        return v
     return v / norm
 
 
-def adam_update_single(grads, m, v, t, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
+def adam_update_single(
+    grads, m, v, t, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8
+):
     """
     Calculates the Adam-adjusted gradient update for a single set of parameters.
 
@@ -322,29 +374,30 @@ def adam_update_single(grads, m, v, t, learning_rate=0.001, beta1=0.9, beta2=0.9
 
     # Update biased second raw moment estimate
     # v_t = beta2 * v_{t-1} + (1 - beta2) * (g_t)^2
-    v_updated = beta2 * v + (1 - beta2) * (grads ** 2)
+    v_updated = beta2 * v + (1 - beta2) * (grads**2)
 
     # Compute bias-corrected first moment estimate
     # m_hat_t = m_t / (1 - beta1^t)
     # The power ** t is applied to beta1 and beta2, not the entire denominator.
-    m_corrected = m_updated / (1 - beta1 ** t)
+    m_corrected = m_updated / (1 - beta1**t)
 
     # Compute bias-corrected second raw moment estimate
     # v_hat_t = v_t / (1 - beta2^t)
-    v_corrected = v_updated / (1 - beta2 ** t)
+    v_corrected = v_updated / (1 - beta2**t)
 
     # Calculate the Adam-adjusted gradient update
     # This is the term that will be subtracted from (or added to) the parameters.
-    adjusted_grad_update = learning_rate * m_corrected / (np.sqrt(v_corrected) + epsilon)
+    adjusted_grad_update = (
+        learning_rate * m_corrected / (np.sqrt(v_corrected) + epsilon)
+    )
 
     return adjusted_grad_update, m_updated, v_updated
-
 
 
 class ExperienceBuffer:
     def __init__(self):
         self.rewards = []
-        self.actions= []
+        self.actions = []
         self.states = []
         self.nxt_states = []
         self.nabs = []
