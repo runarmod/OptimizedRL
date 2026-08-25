@@ -1,8 +1,8 @@
+from copy import copy, deepcopy
+from itertools import product
+
 import numpy as np
 import torch
-from copy import copy
-from itertools import product
-from copy import deepcopy
 
 
 def categorical(p):
@@ -46,7 +46,7 @@ def nn_branch_sample(sol,bounds):
         if isint(var):
             action[i] = var
         else:
-            action[i] = max(min(round(sol[i]),bounds[i][1]),bounds[i][0])
+            action[i] = max(min(round(var),bounds[i][1]),bounds[i][0])
         new_bounds[i] = (action[i],action[i])
     return action,new_bounds
  
@@ -109,7 +109,7 @@ def knn_branch_sample_simple(sol,bounds,k=3):
             action[i] = int(var)
             candidates_per_var.append([int(var)])
         else:
-            center = int(round(sol[i]))
+            center = int(round(var))
             half = k // 2
             low = max(int(bounds[i][0]), center - half)
             high = min(int(bounds[i][1]), center + half)
@@ -170,7 +170,7 @@ def knn_branch_sample(sol, bounds, k = 9, max_pts = 5000):
     new_bounds = deepcopy(bounds)
 
     for i, val in enumerate(action):
-        new_bounds[i] = (action[i], action[i])
+        new_bounds[i] = (val, val)
     
     return action, new_bounds
 

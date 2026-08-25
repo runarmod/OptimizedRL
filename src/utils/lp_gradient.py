@@ -1,6 +1,8 @@
 
 
 import numpy as np
+
+
 def gradient(node):
     """
     

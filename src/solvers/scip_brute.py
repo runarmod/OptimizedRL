@@ -1,7 +1,14 @@
-from pyscipopt import Branchrule, Eventhdlr, Model, SCIP_EVENTTYPE, SCIP_PARAMSETTING, SCIP_RESULT, quicksum
 import numpy as np
+from pyscipopt import (
+    SCIP_EVENTTYPE,
+    SCIP_PARAMSETTING,
+    SCIP_RESULT,
+    Branchrule,
+    Eventhdlr,
+    Model,
+    quicksum,
+)
 from scipy.optimize import linprog as _linprog
-
 
 _INVALID_OBJ = -1e18
 _HEURISTICS = (

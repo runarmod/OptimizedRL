@@ -1,4 +1,3 @@
-import scipy
 
 # No handling of integer being none yet
 class Node:

@@ -1,6 +1,8 @@
+
 import gymnasium as gym
 import numpy as np
-from itertools import product
+
+
 class Arb_binary(gym.Env):
 
     def __init__(self,c,p,A,B,C,D,E,pf,a_space_size,noise = False,std = 0):

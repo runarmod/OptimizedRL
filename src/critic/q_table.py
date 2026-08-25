@@ -1,6 +1,8 @@
-from critic.critic_interface import Critic
-import src.utils.q_table as q
 import numpy as np
+
+import src.utils.q_table as q
+from critic.critic_interface import Critic
+
 
 class Q_table(Critic):
     def __init__(self,table,lr,df,eps):

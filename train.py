@@ -1,24 +1,20 @@
 
-import numpy as np
 import os
-import torch
 from pathlib import Path
-from src.gym_envs import example_env
-from src.gym_envs import portfolio_env
-from src.models import example_model
-from src.models import portfolio_model
 
-from src.critic import gae
-from src.solvers import bnb
-from src.solvers import scip
-from src.solvers import scip_brute
-
+import numpy as np
+import torch
+import yaml
+from scipy.sparse import block_diag, csr_matrix, hstack, identity, lil_matrix, vstack
 from tqdm import tqdm
+
 import wandb
 from src import actor
+from src.critic import gae
+from src.gym_envs import example_env, portfolio_env
+from src.models import example_model, portfolio_model
 from src.ppo.ppo_utils import PPO_MILP_Agent, PPOBuffer, PPOStep
-import yaml
-from scipy.sparse import lil_matrix, hstack, vstack, identity, block_diag, csr_matrix
+from src.solvers import bnb, scip, scip_brute
 
 
 def build_solver(config):

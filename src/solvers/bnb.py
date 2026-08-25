@@ -1,10 +1,9 @@
-from scipy.optimize import linprog
 from collections import deque
+from copy import copy, deepcopy
+from math import ceil, floor
+
 import numpy as np
-from copy import deepcopy, copy
-from math import floor,ceil
-
-
+from scipy.optimize import linprog
 
 # Node dictionary template
 

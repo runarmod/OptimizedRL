@@ -7,12 +7,12 @@ approaches can coexist in the same codebase.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 
+from src.actor import calc_actual_grad
 from src.utils.policy import (
     categorical,
     logsumnp,
@@ -20,7 +20,6 @@ from src.utils.policy import (
     naive_branch_sample,
     nn_branch_sample,
 )
-from src.actor import calc_actual_grad
 
 
 class RunningMeanStd:
@@ -102,7 +101,7 @@ class Transition:
 
 class PPOBuffer:
     def __init__(self):
-        self.data: List[Transition] = []
+        self.data: list[Transition] = []
 
     def add(self, transition: Transition):
         self.data.append(transition)
@@ -266,7 +265,7 @@ class PPOMILP:
         state: np.ndarray,
         next_state: np.ndarray,
         done: bool,
-        act_info: Dict,
+        act_info: dict,
     ):
         del next_state
         if act_info.get("ppo_score") is None:
@@ -323,7 +322,7 @@ class PPOMILP:
         iters: int = 0,
         sample: bool = False,
         num_samples: float = 1.0,
-        last_state: Optional[np.ndarray] = None,
+        last_state: np.ndarray | None = None,
         last_done: bool = False,
     ):
         del iters, sample, num_samples

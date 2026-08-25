@@ -1,14 +1,14 @@
+import time
+from collections import deque
 from copy import copy
 from math import inf
-from collections import deque
-import numpy as np
 from multiprocessing import Pool
-import time
-import scipy
+
 import highspy
+import numpy as np
+import scipy
+
 from solvers.solver_interface import Solver
-
-
 
 # BFS brute force search for MILP solutions
 

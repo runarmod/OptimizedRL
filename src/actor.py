@@ -1,11 +1,18 @@
-from src.utils.policy import policy_dist,nabla_log_pi,categorical,knn_branch_sample,naive_branch_sample,nn_branch_sample_only_keep_ints,naive_branch_sample_only_keep_ints, policy_dist_torch,policy_dist_np,nabla_log_pi_stable
-from src.utils.q_table import train_q_table
-from tqdm import tqdm
+import cvxpy as cp
 import numpy as np
 import torch
 from cvxpylayers.torch import CvxpyLayer
-import cvxpy as cp
 from scipy.optimize import linprog
+from tqdm import tqdm
+
+from src.utils.policy import (
+    categorical,
+    knn_branch_sample,
+    nabla_log_pi_stable,
+    naive_branch_sample,
+    policy_dist_np,
+    policy_dist_torch,
+)
 
 # def categorical(p):
 #     return (p.cumsum(-1) >= np.random.uniform(size=p.shape[:-1])[..., None]).argmax(-1)

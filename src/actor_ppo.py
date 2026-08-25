@@ -1,14 +1,14 @@
-from tqdm import tqdm
 import numpy as np
 import torch
 from scipy.optimize import linprog
+from tqdm import tqdm
 
 from src.utils.policy import (
     categorical,
+    nabla_log_pi_stable,
     naive_branch_sample,
     nn_branch_sample,
     policy_dist_np,
-    nabla_log_pi_stable,
 )
 
 

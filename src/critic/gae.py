@@ -1,9 +1,12 @@
-from src.critic.critic_interface import Critic
-import torch.nn.functional as F
-import torch
-import torch.nn as nn
-import torch.optim as optim
 import warnings
+
+import torch
+import torch.nn.functional as F
+from torch import nn, optim
+
+from src.critic.critic_interface import Critic
+
+
 class GAE(Critic): # Why isnt this camelcase
     def __init__(self,dims,lr,df,eps,tau,device):
         super().__init__()
@@ -115,7 +118,7 @@ class GAE(Critic): # Why isnt this camelcase
 
 class DVN(nn.Module):
     def __init__(self,dims,device):
-        super(DVN,self).__init__()
+        super().__init__()
         if dims[-1] != 1:
             raise Exception("Last dim must be one")
         self.layers = nn.ModuleList([nn.Linear(dims[i], dims[i+1],device = device) for i in range(len(dims) - 1)])

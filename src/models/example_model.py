@@ -1,7 +1,10 @@
 
-from src.models.model_interface import Model
-import numpy as np
 from copy import copy
+
+import numpy as np
+
+from src.models.model_interface import Model
+
 
 class Arbbin(Model): # Fix D
     def __init__(self,c,C,D,E,aA,aB,b,bounds,integer,pf,exact = False):

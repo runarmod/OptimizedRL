@@ -6,12 +6,12 @@ where the policy is a categorical distribution over candidate objective values.
 """
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.distributions import Categorical
 
 from src.utils.policy import knn_branch_sample, naive_branch_sample
@@ -90,15 +90,15 @@ class PPOStep:
     done: bool
     old_logp: float
     value: float
-    chosen_action_raw: Optional[np.ndarray] = None
-    executed_action: Optional[np.ndarray] = None
+    chosen_action_raw: np.ndarray | None = None
+    executed_action: np.ndarray | None = None
 
 
 class PPORolloutBuffer:
     """Rollout buffer for PPO over MILP candidate pools."""
 
     def __init__(self):
-        self.steps: List[PPOStep] = []
+        self.steps: list[PPOStep] = []
 
     def clear(self) -> None:
         self.steps.clear()
@@ -124,7 +124,6 @@ class PPORolloutBuffer:
 class PPOBuffer(PPORolloutBuffer):
     """Compatibility alias matching naming from PPO-MPC utilities."""
 
-    pass
 
 
 def compute_returns_and_advantages(
@@ -186,7 +185,7 @@ class PPOMILPAgent:
         minimize_env_reward: bool = True,
         normalize_rewards: bool = True,
         reward_norm_eps: float = 1e-8,
-        reward_clip: Optional[float] = None,
+        reward_clip: float | None = None,
         nn_sample: bool = True,
         device: str = "cpu",
     ):
@@ -416,7 +415,7 @@ class PPOMILPAgent:
         clip_gap = unclipped_obj - clipped_obj
         return policy_loss, entropy, approx_kl, unclipped_obj, clipped_obj, clip_gap, clip_fraction
 
-    def update(self, buffer: PPORolloutBuffer, last_value: float = 0.0) -> Dict[str, float]:
+    def update(self, buffer: PPORolloutBuffer, last_value: float = 0.0) -> dict[str, float]:
         if len(buffer) == 0:
             raise ValueError("PPO buffer is empty")
 
@@ -630,4 +629,3 @@ class PPOMILPAgent:
 class PPO_MILP_Agent(PPOMILPAgent):
     """Compatibility class matching naming style from PPO-MPC utilities."""
 
-    pass

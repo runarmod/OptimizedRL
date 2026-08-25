@@ -1,5 +1,5 @@
-from pyscipopt import Model, quicksum, Eventhdlr, SCIP_EVENTTYPE
 import numpy as np
+from pyscipopt import SCIP_EVENTTYPE, Eventhdlr, Model, quicksum
 from scipy.optimize import linprog as _linprog
 
 _INVALID_OBJ = -1e18  # threshold below which an LP objective is considered garbage
