@@ -8,11 +8,10 @@ from scipy.sparse import block_diag, csr_matrix, hstack, identity, lil_matrix, v
 from tqdm import tqdm
 
 import wandb
-from src import actor
-from src.critic import gae
+from src.agents.ppo.ppo_utils import PPO_MILP_Agent, PPOBuffer, PPOStep
+from src.agents.vanilla_gradient import actor, gae
 from src.gym_envs import example_env, portfolio_env
 from src.models import example_model, portfolio_model
-from src.ppo.ppo_utils import PPO_MILP_Agent, PPOBuffer, PPOStep
 from src.solvers import bnb, scip, scip_brute
 
 
@@ -88,7 +87,6 @@ def sanitize_env_action(env, action):
     return action_arr
 
 
-
 def compute_ppo_linearization_stats(recent_ppo_samples, theta_now):
     if len(recent_ppo_samples) == 0:
         return {}
@@ -152,7 +150,6 @@ def compute_ppo_linearization_stats(recent_ppo_samples, theta_now):
         "grad_parallelism_mean": float(np.mean(grad_parallelism_vals)),
         "policy_shift_std_mean": float(np.mean(policy_shift_std_vals)),
     }
-
 
 
 def main():
