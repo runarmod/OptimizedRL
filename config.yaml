@@ -1,4 +1,3 @@
-
 name: "Seed1 gradient"
 
 wandb_mode: "online"
@@ -8,12 +7,11 @@ portfolio_zero_init_seeds: [5, 6, 7]
 
 numpy_seed: 5
 load: False
-load_path: 'params/k4g2v0ol.yaml'
+load_path: "params/k4g2v0ol.yaml"
 
-device: 'cuda'
+device: "cuda"
 
 scip:
-  use_standard_solver: true
   verbose: false
 
 scip_brute:
@@ -30,12 +28,11 @@ scip_brute:
   mimic_bnb_pool_filter: false
   prefer_depth_first: true
 
-
 training:
   # options: vanilla_gradient | ppo
-  algorithm: 'ppo'
-  # options: bnb | scip
-  solver: 'scip'
+  algorithm: "ppo"
+  # options: scip | scip_brute | bnb
+  solver: "scip"
 
 model:
   state_size: 6
@@ -69,7 +66,7 @@ portfolio_model:
   lr_mult_aB: 1.0
   lr_mult_b: 1.0
   position_dynamics_mode: "trade_stateful"
-  init_mode: "deterministic"   # "random" = legacy behaviour | "deterministic" = neutral zero-init
+  init_mode: "deterministic" # "random" = legacy behaviour | "deterministic" = neutral zero-init
 
 portfolio_env:
   transaction_cost: 0.0001
@@ -101,7 +98,6 @@ portfolio_env:
   price_levels_mode: "on"
   initial_asset_price: 100.0
   min_asset_price: 1.0
-  
 
 ppo:
   # Keep PPO aligned with your objective: minimize env reward.
@@ -128,11 +124,9 @@ ppo:
   target_kl: 0.01
   normalize_adv: True
 
-
 train_iters: 20
 rollout_iters: 1000
 total_iters: 100000
-
 
 explicit_sol_time: 4
 comp_expected: False

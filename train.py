@@ -25,11 +25,9 @@ def build_solver(config):
         return bnb.BranchAndBoundRevamped()
 
     if solver_name == "scip":
-        use_standard_solver = bool(scip_cfg.get("use_standard_solver", True))
+        return scip.SCIPSolver(verbose=bool(scip_cfg.get("verbose", False)))
 
-        if use_standard_solver:
-            return scip.SCIPSolver(verbose=bool(scip_cfg.get("verbose", False)))
-
+    if solver_name == "scip_brute":
         return scip_brute.SCIPSolver(
             verbose=bool(scip_brute_cfg.get("verbose", False)),
             disable_heuristics=bool(scip_brute_cfg.get("disable_heuristics", True)),
@@ -56,7 +54,8 @@ def build_solver(config):
         )
 
     raise ValueError(
-        f"training.solver must be either 'bnb' or 'scip'. Got '{solver_name}'."
+        "training.solver must be one of 'scip', 'scip_brute', or 'bnb'. "
+        f"Got '{solver_name}'."
     )
 
 
