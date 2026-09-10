@@ -13,7 +13,6 @@ def isint(x):
     return int(x) == x
 
 
-
 def naive_branch_sample(sol, bounds):
     action = np.zeros_like(sol)
     new_bounds = copy(bounds)
@@ -39,6 +38,7 @@ def nn_branch_sample(sol, bounds):
             action[i] = max(min(round(var), bounds[i][1]), bounds[i][0])
         new_bounds[i] = (action[i], action[i])
     return action, new_bounds
+
 
 # Addition to the original thesis codebase
 
@@ -97,12 +97,9 @@ def knn_branch_sample(sol, bounds, k=9, max_pts=5000):
     return action, new_bounds
 
 
-
-
 def policy_dist_np(obj_vals, beta=1):
 
     return np.exp((-1) * beta * obj_vals - logsumnp((-1) * beta * obj_vals))
-
 
 
 def policy_dist_torch(obj_vals, beta=1):
@@ -118,6 +115,7 @@ def logsumtorch(x):
 def logsumnp(x):
     c = np.max(x)
     return c + np.log(np.sum(np.exp(x - c)))
+
 
 def nabla_log_pi_stable(action_taken_object_grad, obj_vals, obj_grads, beta=1):
     """

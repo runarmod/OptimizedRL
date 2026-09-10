@@ -21,6 +21,7 @@ def _as_state_tensor(state: np.ndarray, device: torch.device) -> torch.Tensor:
     state_arr = np.asarray(state, dtype=np.float32).reshape(-1)
     return torch.as_tensor(state_arr, dtype=torch.float32, device=device)
 
+
 def _stable_categorical_logits(
     obj_t: torch.Tensor,
     beta: float,

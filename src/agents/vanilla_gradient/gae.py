@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 
-from src.critic.critic_interface import Critic
+from src.agents.vanilla_gradient.critic_interface import Critic
 
 
 class GAE(Critic):  # Why isnt this camelcase
