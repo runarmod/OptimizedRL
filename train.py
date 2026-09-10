@@ -68,10 +68,6 @@ def resolve_runtime_device(configured_device):
     return device
 
 
-def _safe_mean(total, count):
-    return total / count if count else 0.0
-
-
 def _empirical_cvar(losses, alpha):
     losses = np.asarray(losses, dtype=float).flatten()
     if losses.size == 0:
@@ -83,10 +79,6 @@ def _empirical_cvar(losses, alpha):
     return float(np.mean(tail_losses))
 
 
-def _print_run_diagnostics(problem_name, step, diagnostics):
-    return None
-
-
 def sanitize_env_action(env, action):
     action_arr = np.asarray(action, dtype=np.float32).reshape(-1)
     action_arr = np.round(action_arr).astype(np.int32)
@@ -95,15 +87,6 @@ def sanitize_env_action(env, action):
         action_arr = np.clip(action_arr, 0, nvec - 1)
     return action_arr
 
-
-def softmax_np(logits):
-    z = np.asarray(logits, dtype=np.float64).reshape(-1)
-    z = z - np.max(z)
-    ez = np.exp(z)
-    s = np.sum(ez)
-    if s <= 0:
-        return np.ones_like(z, dtype=np.float64) / max(len(z), 1)
-    return ez / s
 
 
 def compute_ppo_linearization_stats(recent_ppo_samples, theta_now):
@@ -170,109 +153,6 @@ def compute_ppo_linearization_stats(recent_ppo_samples, theta_now):
         "policy_shift_std_mean": float(np.mean(policy_shift_std_vals)),
     }
 
-
-def compute_ppo_exactness_stats(
-    recent_ppo_samples, ppo_agent, model, solver, max_samples=8
-):
-    if len(recent_ppo_samples) == 0:
-        return {}
-
-    max_samples = int(max(1, max_samples))
-    samples = recent_ppo_samples[-max_samples:]
-
-    argmin_action_match_vals = []
-    best_obj_gap_vals = []
-    logp_abs_err_vals = []
-    ratio_lin_vals = []
-    ratio_exact_vals = []
-    action_match_l2_vals = []
-
-    # Make sure exact pools are solved under the current theta.
-    ppo_agent._sync_model_params_from_theta()
-    beta = float(ppo_agent.beta)
-
-    for sample in samples:
-        state = np.asarray(sample["state"], dtype=np.float32).reshape(-1)
-        obj_vals = np.asarray(sample["obj_vals"], dtype=np.float32)
-        theta_grads = np.asarray(sample["theta_grads"], dtype=np.float32)
-        theta_ref = np.asarray(sample["theta_ref"], dtype=np.float32)
-        action_idx = int(sample["action_idx"])
-        old_logp = float(sample["old_logp"])
-        lin_actions = np.asarray(sample["actions"], dtype=np.float32)
-
-        if obj_vals.size == 0 or theta_grads.shape[0] == 0:
-            continue
-
-        theta_now = ppo_agent.theta.detach().cpu().numpy().astype(np.float32)
-        theta_delta = theta_now - theta_ref
-        obj_lin = obj_vals + theta_grads @ theta_delta
-        p_lin = softmax_np(-beta * obj_lin)
-
-        lin_argmin_idx = int(np.argmin(obj_lin))
-        lin_argmin_action = lin_actions[lin_argmin_idx]
-
-        model.update_state(state)
-        node = model.get_LP_formulation()
-        sol_pool_exact = solver.solve(node)
-        if not sol_pool_exact:
-            continue
-
-        exact_obj = np.asarray([sol["fun"] for sol in sol_pool_exact], dtype=np.float32)
-        exact_actions = np.asarray(
-            [sol["x"][model.get_desc_var_indices()] for sol in sol_pool_exact],
-            dtype=np.float32,
-        )
-        p_exact = softmax_np(-beta * exact_obj)
-
-        exact_argmin_idx = int(np.argmin(exact_obj))
-        exact_argmin_action = exact_actions[exact_argmin_idx]
-        argmin_action_match_vals.append(
-            float(np.allclose(lin_argmin_action, exact_argmin_action, atol=1e-6))
-        )
-
-        lin_best = float(np.min(obj_lin))
-        exact_best = float(np.min(exact_obj))
-        best_obj_gap_vals.append(abs(lin_best - exact_best))
-
-        chosen_action = lin_actions[action_idx]
-        dists = np.linalg.norm(exact_actions - chosen_action.reshape(1, -1), axis=1)
-        exact_match_idx = int(np.argmin(dists))
-        action_match_l2_vals.append(float(dists[exact_match_idx]))
-
-        lin_prob = float(np.clip(p_lin[action_idx], 1e-12, 1.0))
-        exact_prob = float(np.clip(p_exact[exact_match_idx], 1e-12, 1.0))
-        logp_lin = float(np.log(lin_prob))
-        logp_exact = float(np.log(exact_prob))
-        logp_abs_err_vals.append(abs(logp_lin - logp_exact))
-
-        ratio_lin_vals.append(float(np.exp(logp_lin - old_logp)))
-        ratio_exact_vals.append(float(np.exp(logp_exact - old_logp)))
-
-    n = len(argmin_action_match_vals)
-    if n == 0:
-        return {}
-
-    ratio_lin_arr = np.asarray(ratio_lin_vals, dtype=np.float64)
-    ratio_exact_arr = np.asarray(ratio_exact_vals, dtype=np.float64)
-    if (
-        ratio_lin_arr.size > 1
-        and ratio_exact_arr.size > 1
-        and np.std(ratio_lin_arr) > 1e-12
-        and np.std(ratio_exact_arr) > 1e-12
-    ):
-        ratio_corr = float(np.corrcoef(ratio_lin_arr, ratio_exact_arr)[0, 1])
-    else:
-        ratio_corr = 0.0
-
-    return {
-        "n_samples": float(n),
-        "argmin_action_match_rate": float(np.mean(argmin_action_match_vals)),
-        "best_obj_abs_gap_mean": float(np.mean(best_obj_gap_vals)),
-        "logp_abs_err_mean": float(np.mean(logp_abs_err_vals)),
-        "ratio_abs_err_mean": float(np.mean(np.abs(ratio_lin_arr - ratio_exact_arr))),
-        "ratio_corr": ratio_corr,
-        "matched_action_l2_mean": float(np.mean(action_match_l2_vals)),
-    }
 
 
 def main():
@@ -1019,10 +899,6 @@ def calc_expected_reward(c, A, B, C, D, E, T, state, solver):
                 if sol["fun"] < best["fun"]:
                     best = sol
             return best["fun"]
-
-
-def moving_average(x, w):
-    return np.convolve(x, np.ones(w), "valid") / w
 
 
 if __name__ == "__main__":

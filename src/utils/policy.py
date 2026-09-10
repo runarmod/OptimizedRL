@@ -13,20 +13,6 @@ def isint(x):
     return int(x) == x
 
 
-# def naive_branch_sample(sol,conds,action_size,bounds): # This doesnt handle if there are several conditions on a variable
-#     """
-#     """
-#     action = np.zeros(shape = (action_size,))
-#     vars = []
-#     for var,_,val in conds:
-#         vars.append(var)
-#         action[var] = sol[var] if isint(sol[var]) else val
-
-#     for i in range(action_size):
-#         bound = bounds[i]
-#         action[i] = np.random.randint(bound[0],bound[1]) if i not in vars else action[i]
-#     return action
-
 
 def naive_branch_sample(sol, bounds):
     action = np.zeros_like(sol)
@@ -54,93 +40,7 @@ def nn_branch_sample(sol, bounds):
         new_bounds[i] = (action[i], action[i])
     return action, new_bounds
 
-
-def naive_branch_sample_only_keep_ints(
-    sol, conds, action_size, bounds
-):  # This doesnt handle if there are several conditions on a variable
-    """
-    Not fixed at condition
-    """
-    action = np.zeros(shape=(action_size,))
-
-    # for i in range(len(sol)):
-    #     if isint(sol[i]):
-    #         action[i] = sol[i]
-    #     elif
-    vars = []
-    for var, comp, val in conds:
-        vars.append(var)
-        if isint(sol[var]):
-            action[var] = sol[var]
-        elif comp == "<=":
-            action[var] = np.random.randint(bounds[var][0], val)
-        elif comp == ">=":
-            action[var] = np.random.randint(val, bounds[var][1])
-
-    for i in range(action_size):
-        bound = bounds[i]
-        action[i] = (
-            np.random.randint(bound[0], bound[1]) if i not in vars else action[i]
-        )
-    return action
-
-
-def nn_branch_sample_only_keep_ints(
-    sol, conds, action_size, bounds
-):  # This doesnt handle if there are several conditions on a variable
-    """
-    Not fixed at condition
-    """
-    action = np.zeros(shape=(action_size,))
-    vars = []
-    for var, comp, val in conds:
-        vars.append(var)
-        if isint(sol[var]):
-            action[var] = sol[var]
-        elif comp == "<=":
-            action[var] = max(min(round(sol[var]), val), bounds[var][0])
-        elif comp == ">=":
-            action[var] = max(min(round(sol[var]), bounds[var][1]), val)
-
-    for i in range(action_size):
-        bound = bounds[i]
-        action[i] = (
-            max(min(round(sol[i]), bound[1]), bound[0]) if i not in vars else action[i]
-        )
-    return action
-
-
 # Addition to the original thesis codebase
-
-
-def knn_branch_sample_simple(sol, bounds, k=3):
-    action = np.zeros_like(sol, dtype=int)
-    new_bounds = copy(bounds)
-
-    candidates_per_var = []
-    for i, var in enumerate(sol):
-        if isint(var):
-            action[i] = int(var)
-            candidates_per_var.append([int(var)])
-        else:
-            center = round(var)
-            half = k // 2
-            low = max(int(bounds[i][0]), center - half)
-            high = min(int(bounds[i][1]), center + half)
-            candidates = list(range(low, high + 1))
-            if len(candidates) < k:
-                left = max(int(bounds[i][0]), center - k + 1)
-                right = min(int(bounds[i][1]), center + k - 1)
-                candidates = list(range(left, right + 1))
-                candidates = [
-                    c
-                    for c in candidates
-                    if c >= int(bounds[i][0]) and c <= int(bounds[i][1])
-                ]
-            candidates_per_var.append(candidates)
-            action[i] = int(np.random.choice(candidates))
-        new_bounds[i] = (action[i], action[i])
-    return action, new_bounds
 
 
 def knn_branch_sample(sol, bounds, k=9, max_pts=5000):
@@ -197,36 +97,12 @@ def knn_branch_sample(sol, bounds, k=9, max_pts=5000):
     return action, new_bounds
 
 
-## End addition
-
-# def nn_branch_sample(sol,conds,action_size,bounds): # This doesnt handle if there are several conditions on a variable
-#     action = np.zeros(shape = (action_size,))
-#     vars = []
-#     for var,_,val in conds:
-#         vars.append(var)
-#         action[var] = sol[var] if isint(sol[var]) else val
-
-#     for i in range(action_size):
-#         bound = bounds[i]
-#         action[i] = max(min(round(sol[i]),bound[1]),bound[0]) if i not in vars  else action[i]
-#     return action
-
-
-def policy_dist(obj_vals, beta=1):
-    exps = np.exp((-1) * beta * obj_vals)
-    alpha = np.sum(exps)
-    return exps / alpha
 
 
 def policy_dist_np(obj_vals, beta=1):
 
     return np.exp((-1) * beta * obj_vals - logsumnp((-1) * beta * obj_vals))
 
-
-# def policy_dist_torch(obj_vals,beta = 1):
-#     exps = torch.exp((-1)*beta*obj_vals)
-#     alpha = torch.sum(exps)
-#     return torch.divide(exps,alpha)
 
 
 def policy_dist_torch(obj_vals, beta=1):
@@ -242,27 +118,6 @@ def logsumtorch(x):
 def logsumnp(x):
     c = np.max(x)
     return c + np.log(np.sum(np.exp(x - c)))
-
-
-# This math could be off
-def nabla_log_pi(action_taken_object_grad, obj_vals, obj_grads, beta=1):
-    # print("obj:",obj_vals)
-    # print("grads:",np.array(obj_grads))
-    exps = np.exp(-beta * obj_vals)
-    alpha = np.sum(exps)
-    # upper_right = np.sum(beta*exps*obj_grads)
-    upper_right = beta * (exps @ obj_grads)
-    right_side = upper_right / alpha
-    left_side = beta * action_taken_object_grad
-    return right_side - left_side
-
-
-# Might just make one bigger func
-
-
-def policy_grad(nabla_log_pi, adv):
-    return np.sum(nabla_log_pi * adv)
-
 
 def nabla_log_pi_stable(action_taken_object_grad, obj_vals, obj_grads, beta=1):
     """
@@ -358,18 +213,3 @@ def nabla_log_pi_stable(action_taken_object_grad, obj_vals, obj_grads, beta=1):
     gradient = beta * (weighted_grads_sum - action_taken_grad_arr)
 
     return gradient
-
-
-# obj_vals = np.random.rand(1,10)
-# # obj_vals = [i for i in range(10)]
-# obj_grads=  np.random.rand(1,10)
-
-# nab = nabla_log_pi(obj_vals,obj_grads)
-
-# adv = np.random.rand(1,10)
-
-# print(policy_grad(nab,adv))
-
-
-if __name__ == "__main__":
-    pass
