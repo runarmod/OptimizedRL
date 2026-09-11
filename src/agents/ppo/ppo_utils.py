@@ -167,7 +167,7 @@ class PPOMILPAgent:
         policy_beta: float = 1.0,
         update_epochs: int = 10,
         mini_batch_size: int = 64,
-        target_kl: float = 0.0,
+        target_kl: float | None = None,
         normalize_adv: bool = True,
         normalize_obj_values: bool = True,
         obj_norm_eps: float = 1e-8,
@@ -188,7 +188,7 @@ class PPOMILPAgent:
         self.lr_policy = float(lr_policy)
         self.update_epochs = update_epochs
         self.mini_batch_size = mini_batch_size
-        self.target_kl = target_kl
+        self.target_kl = None if target_kl is None else float(target_kl)
         self.normalize_adv = normalize_adv
         self.normalize_obj_values = bool(normalize_obj_values)
         self.obj_norm_eps = float(obj_norm_eps)
@@ -561,7 +561,8 @@ class PPOMILPAgent:
                 value_loss = 0.5 * (value_pred - ret_t).pow(2).mean()
 
                 if (
-                    self.target_kl > 0
+                    self.target_kl is not None
+                    and self.target_kl > 0
                     and approx_kl.detach().item() > 1.5 * self.target_kl
                 ):
                     continue

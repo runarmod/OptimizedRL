@@ -10,47 +10,36 @@ from tqdm import tqdm
 import wandb
 from src.agents.ppo.ppo_utils import PPO_MILP_Agent, PPOBuffer, PPOStep
 from src.agents.vanilla_gradient import actor, gae
+from src.config.config_loader import load_config
+from src.config.config_models import AppConfig
 from src.gym_envs import example_env, portfolio_env
 from src.models import example_model, portfolio_model
 from src.solvers import bnb, scip, scip_brute
 
 
-def build_solver(config):
-    training_cfg = config.get("training", {})
-    solver_name = str(training_cfg.get("solver", "scip")).strip().lower()
-    scip_cfg = config.get("scip", {})
-    scip_brute_cfg = config.get("scip_brute", {})
+def build_solver(config: AppConfig):
+    solver_name = config.training.solver
 
     if solver_name == "bnb":
         return bnb.BranchAndBoundRevamped()
 
     if solver_name == "scip":
-        return scip.SCIPSolver(verbose=bool(scip_cfg.get("verbose", False)))
+        return scip.SCIPSolver(verbose=config.scip.verbose)
 
     if solver_name == "scip_brute":
         return scip_brute.SCIPSolver(
-            verbose=bool(scip_brute_cfg.get("verbose", False)),
-            disable_heuristics=bool(scip_brute_cfg.get("disable_heuristics", True)),
-            disable_presolve=bool(scip_brute_cfg.get("disable_presolve", True)),
-            disable_separating=bool(scip_brute_cfg.get("disable_separating", True)),
-            disable_propagation=bool(scip_brute_cfg.get("disable_propagation", False)),
-            disable_conflict_analysis=bool(
-                scip_brute_cfg.get("disable_conflict_analysis", False)
-            ),
-            disable_symmetry=bool(scip_brute_cfg.get("disable_symmetry", False)),
-            prefer_most_fractional_branching=bool(
-                scip_brute_cfg.get("prefer_most_fractional_branching", False)
-            ),
-            prefer_breadth_first=bool(
-                scip_brute_cfg.get("prefer_breadth_first", False)
-            ),
-            tighten_integer_projected_bounds=bool(
-                scip_brute_cfg.get("tighten_integer_projected_bounds", False)
-            ),
-            mimic_bnb_pool_filter=bool(
-                scip_brute_cfg.get("mimic_bnb_pool_filter", False)
-            ),
-            prefer_depth_first=bool(scip_brute_cfg.get("prefer_depth_first", True)),
+            verbose=config.scip_brute.verbose,
+            disable_heuristics=config.scip_brute.disable_heuristics,
+            disable_presolve=config.scip_brute.disable_presolve,
+            disable_separating=config.scip_brute.disable_separating,
+            disable_propagation=config.scip_brute.disable_propagation,
+            disable_conflict_analysis=config.scip_brute.disable_conflict_analysis,
+            disable_symmetry=config.scip_brute.disable_symmetry,
+            prefer_most_fractional_branching=config.scip_brute.prefer_most_fractional_branching,
+            prefer_breadth_first=config.scip_brute.prefer_breadth_first,
+            tighten_integer_projected_bounds=config.scip_brute.tighten_integer_projected_bounds,
+            mimic_bnb_pool_filter=config.scip_brute.mimic_bnb_pool_filter,
+            prefer_depth_first=config.scip_brute.prefer_depth_first,
         )
 
     raise ValueError(
@@ -154,26 +143,25 @@ def compute_ppo_linearization_stats(recent_ppo_samples, theta_now):
 def main():
     project_root = Path(__file__).resolve().parent
     config_path = project_root / "config.yaml"
-    with config_path.open() as config_file:
-        config = yaml.safe_load(config_file)
-    runtime_device = resolve_runtime_device(config.get("device", "cpu"))
+    config = load_config(config_path)
+    runtime_device = resolve_runtime_device(config.device)
 
-    problem_name = config.get("problem", "example")
-    configured_seed = int(config["numpy_seed"])
+    problem_name = config.problem
+    configured_seed = config.numpy_seed
     effective_seed = configured_seed
-    portfolio_zero_init_seeds = set(config.get("portfolio_zero_init_seeds", [5, 6, 7]))
+    portfolio_zero_init_seeds = set(config.portfolio_zero_init_seeds)
     force_portfolio_zero_init = (
         problem_name == "portfolio" and configured_seed in portfolio_zero_init_seeds
     )
 
-    diagnostic_window = max(1, int(config.get("terminal_log_every", 1000)))
+    diagnostic_window = config.terminal_log_every
 
     # Init problem
-    state_size = config["model"]["state_size"]
-    action_size = config["model"]["action_size"]
+    state_size = config.model.state_size
+    action_size = config.model.action_size
     np.random.seed(effective_seed)
-    num_cons = config["model"]["n_cons"]
-    num_pieces = config["model"]["n_value_func"]
+    num_cons = config.model.n_cons
+    num_pieces = config.model.n_value_func
     aA = np.random.uniform(0, 0.1, size=(num_pieces, state_size))
     aB = np.random.uniform(0, 0.1, size=(num_pieces, action_size))
     b = np.random.uniform(0, 0.1, size=(num_pieces,))
@@ -211,9 +199,11 @@ def main():
         E = np.full((num_cons,), 1e6)
         c_model = np.zeros((action_size,))
 
-    load = config["load"]
+    load = config.load
     if load:
-        load_path = Path(config["load_path"])
+        load_path = config.load_path
+        if load_path is None:
+            raise ValueError("Config 'load' is True but 'load_path' is not set.")
         if not load_path.is_absolute():
             load_path = project_root / load_path
         with load_path.open() as params_file:
@@ -232,46 +222,44 @@ def main():
     elif problem_name == "portfolio":
         model_cls = portfolio_model.PortfolioModel
         env_cls = portfolio_env.PortfolioEnv
-        portfolio_cfg = config.get("portfolio_env", {})
-        portfolio_model_cfg = config.get("portfolio_model", {})
+        portfolio_cfg = config.portfolio_env
+        portfolio_model_cfg = config.portfolio_model
 
         seed_behavior = "modern" if configured_seed >= 5 else "legacy"
-        transaction_cost = portfolio_cfg.get("transaction_cost", 0.0)
-        holding_cost = portfolio_cfg.get("holding_cost", 0.0)
-        budget_cap = portfolio_cfg.get("budget_cap", None)
-        initial_cash = portfolio_cfg.get("initial_cash", 30.0)
-        cash_interest_rate = portfolio_cfg.get("cash_interest_rate", 0.0)
-        risk_cap = portfolio_cfg.get("risk_cap", None)
-        risk_weight = portfolio_cfg.get("risk_weight", 1.0)
-        asset_max_position = portfolio_cfg.get("asset_max_position", None)
-        market_mode = portfolio_cfg.get("market_mode", "linear")
-        action_mode = portfolio_cfg.get("action_mode", "absolute")
-        reward_mode = portfolio_cfg.get("reward_mode", "economic")
-        inventory_penalty = portfolio_cfg.get("inventory_penalty", 0.0)
-        return_mu = portfolio_cfg.get("return_mu", 0.0)
-        return_phi = portfolio_cfg.get("return_phi", 0.0)
-        return_sigma = portfolio_cfg.get("return_sigma", 0.01)
-        alpha_mode = portfolio_cfg.get("alpha_mode", "off")
-        alpha_rho = portfolio_cfg.get("alpha_rho", 0.9)
-        alpha_sigma = portfolio_cfg.get("alpha_sigma", 0.02)
-        alpha_to_return = portfolio_cfg.get("alpha_to_return", 0.2)
-        signal_noise_std = portfolio_cfg.get("signal_noise_std", 0.01)
-        return_signal_scale = portfolio_cfg.get("return_signal_scale", 1.0)
-        cvar_mode = portfolio_cfg.get("cvar_mode", "off")
-        cvar_cap = portfolio_cfg.get("cvar_cap", 1.0)
-        cvar_alpha = portfolio_cfg.get("cvar_alpha", 0.95)
-        cvar_n_scenarios = portfolio_cfg.get("cvar_n_scenarios", 20)
-        cvar_obj_weight = portfolio_cfg.get("cvar_obj_weight", 0.0)
-        price_levels_mode = portfolio_cfg.get("price_levels_mode", "off")
-        initial_asset_price = portfolio_cfg.get("initial_asset_price", 100.0)
-        min_asset_price = portfolio_cfg.get("min_asset_price", 1.0)
+        transaction_cost = portfolio_cfg.transaction_cost
+        holding_cost = portfolio_cfg.holding_cost
+        budget_cap = portfolio_cfg.budget_cap
+        initial_cash = portfolio_cfg.initial_cash
+        cash_interest_rate = portfolio_cfg.cash_interest_rate
+        risk_cap = portfolio_cfg.risk_cap
+        risk_weight = portfolio_cfg.risk_weight
+        asset_max_position = portfolio_cfg.asset_max_position
+        market_mode = portfolio_cfg.market_mode
+        action_mode = portfolio_cfg.action_mode
+        reward_mode = portfolio_cfg.reward_mode
+        inventory_penalty = portfolio_cfg.inventory_penalty
+        return_mu = portfolio_cfg.return_mu
+        return_phi = portfolio_cfg.return_phi
+        return_sigma = portfolio_cfg.return_sigma
+        alpha_mode = portfolio_cfg.alpha_mode
+        alpha_rho = portfolio_cfg.alpha_rho
+        alpha_sigma = portfolio_cfg.alpha_sigma
+        alpha_to_return = portfolio_cfg.alpha_to_return
+        signal_noise_std = portfolio_cfg.signal_noise_std
+        return_signal_scale = portfolio_cfg.return_signal_scale
+        cvar_mode = portfolio_cfg.cvar_mode
+        cvar_cap = portfolio_cfg.cvar_cap
+        cvar_alpha = portfolio_cfg.cvar_alpha
+        cvar_n_scenarios = portfolio_cfg.cvar_n_scenarios
+        cvar_obj_weight = portfolio_cfg.cvar_obj_weight
+        price_levels_mode = portfolio_cfg.price_levels_mode
+        initial_asset_price = portfolio_cfg.initial_asset_price
+        min_asset_price = portfolio_cfg.min_asset_price
 
-        lr_mult_aA = portfolio_model_cfg.get("lr_mult_aA", 1.0)
-        lr_mult_aB = portfolio_model_cfg.get("lr_mult_aB", 1.0)
-        lr_mult_b = portfolio_model_cfg.get("lr_mult_b", 1.0)
-        position_dynamics_mode = portfolio_model_cfg.get(
-            "position_dynamics_mode", "legacy"
-        )
+        lr_mult_aA = portfolio_model_cfg.lr_mult_aA
+        lr_mult_aB = portfolio_model_cfg.lr_mult_aB
+        lr_mult_b = portfolio_model_cfg.lr_mult_b
+        position_dynamics_mode = portfolio_model_cfg.position_dynamics_mode
 
         env_kwargs = {
             "transaction_cost": transaction_cost,
@@ -344,7 +332,7 @@ def main():
         b,
         bounds,
         integer,
-        config["model"]["penalty_factor"],
+        config.model.penalty_factor,
         **model_kwargs,
     )
 
@@ -356,9 +344,9 @@ def main():
         C,
         D,
         E,
-        config["gym"]["pf"],
+        config.gym.pf,
         a_space_size=11,
-        std=config["gym"]["noise_std"],
+        std=config.gym.noise_std,
         **env_kwargs,
     )
     m.update_state(gym_model.reset(seed=init_env_seed)[0])
@@ -371,23 +359,25 @@ def main():
 
     os.environ.setdefault("WANDB_SILENT", "true")
     os.environ.setdefault("WANDB_CONSOLE", "off")
-    run = wandb.init(name=config["name"], mode=config["wandb_mode"], config=config)
+    run = wandb.init(
+        name=config.name,
+        mode=config.wandb_mode,
+        config=config.model_dump(mode="json"),
+    )
 
-    window_size = config["plotting"]["window_size"]
-    training_cfg = config.get("training", {})
-    algorithm = training_cfg.get("algorithm", "vanilla_gradient").lower()
-    solver_name = str(training_cfg.get("solver", "scip")).strip().lower()
+    window_size = config.plotting.window_size
+    algorithm = config.training.algorithm
     if algorithm not in ["vanilla_gradient", "ppo"]:
         raise ValueError(
             "training.algorithm must be either 'vanilla_gradient' or 'ppo'. "
             f"Got '{algorithm}'."
         )
 
-    act_lr = config["actor"]["lr"]
-    critic_lr = config["critic"]["lr"]
-    df = config["critic"]["df"]
-    beta = config["actor"]["beta"]
-    eps = config["critic"]["eps"]
+    act_lr = config.actor.lr
+    critic_lr = config.critic.lr
+    df = config.critic.df
+    beta = config.actor.beta
+    eps = config.critic.eps
 
     n_actions = action_ub * (100 + 10 + 1) + 1
 
@@ -405,48 +395,44 @@ def main():
             beta=beta,
             lr=act_lr,
             df=df,
-            nn_sample=config["actor"]["nn_sample"],
-            sampled_grad=config["actor"]["sampled_grad"],
+            nn_sample=config.actor.nn_sample,
+            sampled_grad=config.actor.sampled_grad,
         )
     else:
-        ppo_cfg = config.get("ppo", {})
+        ppo_cfg = config.ppo
         ppo_agent = PPO_MILP_Agent(
             model=m,
             solver=solver,
             state_dim=state_size,
-            gamma=float(ppo_cfg.get("gamma", 0.99)),
-            gae_lambda=float(ppo_cfg.get("gae_lambda", 0.95)),
-            clip_param=float(ppo_cfg.get("clip_param", 0.2)),
-            entropy_coef=float(ppo_cfg.get("entropy_coef", 0.01)),
-            value_coef=float(ppo_cfg.get("value_coef", 0.5)),
-            lr_policy=float(ppo_cfg.get("actor_lr", act_lr)),
-            lr_value=float(ppo_cfg.get("critic_lr", critic_lr)),
-            policy_beta=float(ppo_cfg.get("policy_beta", beta)),
-            update_epochs=int(ppo_cfg.get("opt_epochs", config["train_iters"])),
-            mini_batch_size=int(ppo_cfg.get("mini_batch_size", 64)),
-            target_kl=float(ppo_cfg.get("target_kl", 0.0)),
-            normalize_adv=bool(ppo_cfg.get("normalize_adv", True)),
-            normalize_obj_values=bool(ppo_cfg.get("normalize_obj_values", True)),
-            obj_norm_eps=float(ppo_cfg.get("obj_norm_eps", 1e-8)),
-            minimize_env_reward=bool(ppo_cfg.get("minimize_env_reward", True)),
-            normalize_rewards=bool(ppo_cfg.get("normalize_rewards", True)),
-            reward_norm_eps=float(ppo_cfg.get("reward_norm_eps", 1e-8)),
-            reward_clip=ppo_cfg.get("reward_clip", None),
-            nn_sample=bool(
-                ppo_cfg.get("nn_sample", config.get("actor", {}).get("nn_sample", True))
-            ),
+            gamma=ppo_cfg.gamma,
+            gae_lambda=ppo_cfg.gae_lambda,
+            clip_param=ppo_cfg.clip_param,
+            entropy_coef=ppo_cfg.entropy_coef,
+            value_coef=ppo_cfg.value_coef,
+            lr_policy=ppo_cfg.actor_lr,
+            lr_value=ppo_cfg.critic_lr,
+            policy_beta=ppo_cfg.policy_beta,
+            update_epochs=ppo_cfg.opt_epochs,
+            mini_batch_size=ppo_cfg.mini_batch_size,
+            target_kl=ppo_cfg.target_kl,
+            normalize_adv=ppo_cfg.normalize_adv,
+            normalize_obj_values=ppo_cfg.normalize_obj_values,
+            obj_norm_eps=ppo_cfg.obj_norm_eps,
+            minimize_env_reward=ppo_cfg.minimize_env_reward,
+            normalize_rewards=ppo_cfg.normalize_rewards,
+            reward_norm_eps=ppo_cfg.reward_norm_eps,
+            reward_clip=ppo_cfg.reward_clip,
+            nn_sample=config.actor.nn_sample if ppo_cfg.nn_sample is None else ppo_cfg.nn_sample,
             device=runtime_device,
         )
 
     state = gym_model.state
 
-    training_iters = config["train_iters"]
-    vanilla_rollout_iters = config["rollout_iters"]
-    ppo_rollout_iters = int(
-        config.get("ppo", {}).get("rollout_iters", vanilla_rollout_iters)
-    )
+    training_iters = config.train_iters
+    vanilla_rollout_iters = config.rollout_iters
+    ppo_rollout_iters = config.ppo.rollout_iters
     rollout_iters = ppo_rollout_iters if algorithm == "ppo" else vanilla_rollout_iters
-    total_iters = config["total_iters"]
+    total_iters = config.total_iters
 
     ep_reward = 0
     economic_ep_reward = 0
@@ -467,12 +453,12 @@ def main():
         "empirical_cvar_sum": 0.0,
     }
 
-    T = config["explicit_sol_time"]
+    T = config.explicit_sol_time
     fathomed_counter = 0
     ep_length = 0
 
-    comp_expected = config["comp_expected"]
-    comp_expected_every = config["comp_expected_every"]
+    comp_expected = config.comp_expected
+    comp_expected_every = config.comp_expected_every
 
     recent_rewards = []
     recent_n_sols = []
@@ -702,8 +688,8 @@ def main():
         if algorithm == "vanilla_gradient":
             pol_grad = act.train(
                 iters=training_iters,
-                sample=config["actor"]["sample"],
-                num_samples=config["actor"]["num_samples"],
+                sample=config.actor.sample,
+                num_samples=config.actor.num_samples,
             )
             pol_grad_norm = np.linalg.norm(pol_grad)
             ppo_metrics = {}
