@@ -61,7 +61,9 @@ class ModelConfig(StrictConfig):
 
 
 class GymConfig(StrictConfig):
-    pf: int = Field(gt=0, description="Environment planning or penalty factor.")
+    pf: int = Field(
+        gt=0, description="Environment infeasibility-penalty scaling factor."
+    )
     noise_std: float = Field(
         ge=0, description="Standard deviation of environment transition noise."
     )
@@ -94,7 +96,9 @@ class ActorConfig(StrictConfig):
     )
     sample: bool = Field(description="Subsample vanilla-gradient training data.")
     num_samples: float = Field(
-        gt=0, description="Fraction of buffered samples to use when sampling."
+        gt=0,
+        le=1,
+        description="Fraction of buffered samples to use when sampling.",
     )
 
 
@@ -200,7 +204,9 @@ class PpoConfig(StrictConfig):
     rollout_iters: int = Field(
         gt=0, description="PPO rollout steps per training iteration."
     )
-    target_kl: float = Field(ge=0, description="Optional PPO target KL threshold.")
+    target_kl: float | None = Field(
+        None, description="PPO target KL threshold; null disables early stopping."
+    )
     normalize_adv: bool = Field(
         description="Normalize advantages within PPO mini-batches."
     )
@@ -208,7 +214,9 @@ class PpoConfig(StrictConfig):
 
 class AppConfig(StrictConfig):
     name: str = Field(description="Experiment name.")
-    wandb_mode: str = Field(description="Weights & Biases execution mode.")
+    wandb_mode: Literal["online", "offline", "disabled", "shared"] = Field(
+        description="Weights & Biases execution mode."
+    )
     problem: Literal["example", "portfolio"] = Field(
         description="Optimization problem implementation."
     )
@@ -217,7 +225,9 @@ class AppConfig(StrictConfig):
     )
     numpy_seed: int = Field(description="Random seed for NumPy and environment setup.")
     load: bool = Field(description="Load model parameters from load_path.")
-    load_path: Path = Field(description="Path to saved model parameters.")
+    load_path: Path | None = Field(
+        None, description="Path to saved model parameters."
+    )
     device: str = Field(description="Requested Torch device, such as cpu or cuda.")
     scip: ScipConfig
     scip_brute: ScipBruteConfig

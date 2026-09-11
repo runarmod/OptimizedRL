@@ -202,6 +202,8 @@ def main():
     load = config.load
     if load:
         load_path = config.load_path
+        if load_path is None:
+            raise ValueError("Config 'load' is True but 'load_path' is not set.")
         if not load_path.is_absolute():
             load_path = project_root / load_path
         with load_path.open() as params_file:
