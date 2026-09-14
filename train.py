@@ -225,92 +225,56 @@ def main():
         portfolio_cfg = config.portfolio_env
         portfolio_model_cfg = config.portfolio_model
 
-        seed_behavior = "modern" if configured_seed >= 5 else "legacy"
-        transaction_cost = portfolio_cfg.transaction_cost
-        holding_cost = portfolio_cfg.holding_cost
-        budget_cap = portfolio_cfg.budget_cap
-        initial_cash = portfolio_cfg.initial_cash
-        cash_interest_rate = portfolio_cfg.cash_interest_rate
-        risk_cap = portfolio_cfg.risk_cap
-        risk_weight = portfolio_cfg.risk_weight
-        asset_max_position = portfolio_cfg.asset_max_position
-        market_mode = portfolio_cfg.market_mode
-        action_mode = portfolio_cfg.action_mode
-        reward_mode = portfolio_cfg.reward_mode
-        inventory_penalty = portfolio_cfg.inventory_penalty
-        return_mu = portfolio_cfg.return_mu
-        return_phi = portfolio_cfg.return_phi
-        return_sigma = portfolio_cfg.return_sigma
-        alpha_mode = portfolio_cfg.alpha_mode
-        alpha_rho = portfolio_cfg.alpha_rho
-        alpha_sigma = portfolio_cfg.alpha_sigma
-        alpha_to_return = portfolio_cfg.alpha_to_return
-        signal_noise_std = portfolio_cfg.signal_noise_std
-        return_signal_scale = portfolio_cfg.return_signal_scale
-        cvar_mode = portfolio_cfg.cvar_mode
-        cvar_cap = portfolio_cfg.cvar_cap
-        cvar_alpha = portfolio_cfg.cvar_alpha
-        cvar_n_scenarios = portfolio_cfg.cvar_n_scenarios
-        cvar_obj_weight = portfolio_cfg.cvar_obj_weight
-        price_levels_mode = portfolio_cfg.price_levels_mode
-        initial_asset_price = portfolio_cfg.initial_asset_price
-        min_asset_price = portfolio_cfg.min_asset_price
-
-        lr_mult_aA = portfolio_model_cfg.lr_mult_aA
-        lr_mult_aB = portfolio_model_cfg.lr_mult_aB
-        lr_mult_b = portfolio_model_cfg.lr_mult_b
-        position_dynamics_mode = portfolio_model_cfg.position_dynamics_mode
-
         env_kwargs = {
-            "transaction_cost": transaction_cost,
-            "holding_cost": holding_cost,
-            "budget_cap": budget_cap,
-            "initial_cash": initial_cash,
-            "cash_interest_rate": cash_interest_rate,
-            "risk_cap": risk_cap,
-            "risk_weight": risk_weight,
-            "asset_max_position": asset_max_position,
-            "action_mode": action_mode,
-            "reward_mode": reward_mode,
-            "inventory_penalty": inventory_penalty,
-            "market_mode": market_mode,
-            "return_mu": return_mu,
-            "return_phi": return_phi,
-            "return_sigma": return_sigma,
-            "alpha_mode": alpha_mode,
-            "alpha_rho": alpha_rho,
-            "alpha_sigma": alpha_sigma,
-            "alpha_to_return": alpha_to_return,
-            "signal_noise_std": signal_noise_std,
-            "cvar_n_scenarios": cvar_n_scenarios,
-            "cvar_alpha": cvar_alpha,
-            "price_levels_mode": price_levels_mode,
-            "initial_asset_price": initial_asset_price,
-            "min_asset_price": min_asset_price,
-            "seed_behavior": seed_behavior,
+            "transaction_cost": portfolio_cfg.transaction_cost,
+            "holding_cost": portfolio_cfg.holding_cost,
+            "budget_cap": portfolio_cfg.budget_cap,
+            "initial_cash": portfolio_cfg.initial_cash,
+            "cash_interest_rate": portfolio_cfg.cash_interest_rate,
+            "risk_cap": portfolio_cfg.risk_cap,
+            "risk_weight": portfolio_cfg.risk_weight,
+            "asset_max_position": portfolio_cfg.asset_max_position,
+            "action_mode": portfolio_cfg.action_mode,
+            "reward_mode": portfolio_cfg.reward_mode,
+            "inventory_penalty": portfolio_cfg.inventory_penalty,
+            "market_mode": portfolio_cfg.market_mode,
+            "return_mu": portfolio_cfg.return_mu,
+            "return_phi": portfolio_cfg.return_phi,
+            "return_sigma": portfolio_cfg.return_sigma,
+            "alpha_mode": portfolio_cfg.alpha_mode,
+            "alpha_rho": portfolio_cfg.alpha_rho,
+            "alpha_sigma": portfolio_cfg.alpha_sigma,
+            "alpha_to_return": portfolio_cfg.alpha_to_return,
+            "signal_noise_std": portfolio_cfg.signal_noise_std,
+            "cvar_n_scenarios": portfolio_cfg.cvar_n_scenarios,
+            "cvar_alpha": portfolio_cfg.cvar_alpha,
+            "price_levels_mode": portfolio_cfg.price_levels_mode,
+            "initial_asset_price": portfolio_cfg.initial_asset_price,
+            "min_asset_price": portfolio_cfg.min_asset_price,
+            "seed_behavior": "modern" if configured_seed >= 5 else "legacy",
         }
         model_kwargs = {
-            "transaction_cost": transaction_cost,
-            "holding_cost": holding_cost,
-            "budget_cap": budget_cap,
-            "initial_cash": initial_cash,
-            "risk_cap": risk_cap,
-            "risk_weight": risk_weight,
-            "asset_max_position": asset_max_position,
-            "action_mode": action_mode,
-            "market_mode": market_mode,
-            "return_signal_scale": return_signal_scale,
-            "lr_mult_aA": lr_mult_aA,
-            "lr_mult_aB": lr_mult_aB,
-            "lr_mult_b": lr_mult_b,
-            "position_dynamics_mode": position_dynamics_mode,
-            "cvar_mode": cvar_mode,
-            "cvar_cap": cvar_cap,
-            "cvar_alpha": cvar_alpha,
-            "cvar_n_scenarios": cvar_n_scenarios,
-            "cvar_obj_weight": cvar_obj_weight,
-            "price_levels_mode": price_levels_mode,
-            "initial_asset_price": initial_asset_price,
+            "transaction_cost": portfolio_cfg.transaction_cost,
+            "holding_cost": portfolio_cfg.holding_cost,
+            "budget_cap": portfolio_cfg.budget_cap,
+            "initial_cash": portfolio_cfg.initial_cash,
+            "risk_cap": portfolio_cfg.risk_cap,
+            "risk_weight": portfolio_cfg.risk_weight,
+            "asset_max_position": portfolio_cfg.asset_max_position,
+            "action_mode": portfolio_cfg.action_mode,
+            "market_mode": portfolio_cfg.market_mode,
+            "return_signal_scale": portfolio_cfg.return_signal_scale,
+            "lr_mult_aA": portfolio_model_cfg.lr_mult_aA,
+            "lr_mult_aB": portfolio_model_cfg.lr_mult_aB,
+            "lr_mult_b": portfolio_model_cfg.lr_mult_b,
+            "position_dynamics_mode": portfolio_model_cfg.position_dynamics_mode,
+            "cvar_mode": portfolio_cfg.cvar_mode,
+            "cvar_cap": portfolio_cfg.cvar_cap,
+            "cvar_alpha": portfolio_cfg.cvar_alpha,
+            "cvar_n_scenarios": portfolio_cfg.cvar_n_scenarios,
+            "cvar_obj_weight": portfolio_cfg.cvar_obj_weight,
+            "price_levels_mode": portfolio_cfg.price_levels_mode,
+            "initial_asset_price": portfolio_cfg.initial_asset_price,
         }
         init_env_seed = (
             0
@@ -422,7 +386,11 @@ def main():
             normalize_rewards=ppo_cfg.normalize_rewards,
             reward_norm_eps=ppo_cfg.reward_norm_eps,
             reward_clip=ppo_cfg.reward_clip,
-            nn_sample=config.actor.nn_sample if ppo_cfg.nn_sample is None else ppo_cfg.nn_sample,
+            nn_sample=(
+                config.actor.nn_sample
+                if ppo_cfg.nn_sample is None
+                else ppo_cfg.nn_sample
+            ),
             device=runtime_device,
         )
 
