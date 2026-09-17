@@ -14,6 +14,11 @@ import torch
 from torch import nn
 from torch.distributions import Categorical
 
+from src.agents.algorithm_interface import (
+    AlgorithmDecision,
+    AlgorithmTransition,
+    TrainingAlgorithm,
+)
 from src.utils.policy import knn_branch_sample, naive_branch_sample
 
 
@@ -141,7 +146,7 @@ def compute_returns_and_advantages(
     return returns, adv
 
 
-class PPOMILPAgent:
+class PPOMILPAgent(TrainingAlgorithm):
     """PPO agent for MILP candidate-set action selection.
 
     Policy parameterization:
@@ -177,6 +182,8 @@ class PPOMILPAgent:
         reward_clip: float | None = None,
         nn_sample: bool = True,
         device: str = "cpu",
+        rollout_iters: int = 1,
+        diagnostic_window: int = 100,
     ):
         self.model = model
         self.solver = solver
@@ -199,6 +206,10 @@ class PPOMILPAgent:
         self.policy_beta = float(policy_beta)
         self.nn_sample = bool(nn_sample)
         self.device = torch.device(device)
+        self.rollout_iters = rollout_iters
+        self.diagnostic_window = diagnostic_window
+        self.buffer = PPOBuffer()
+        self.recent_samples = []
 
         aA0, aB0, b0 = self._get_model_param_arrays()
         theta0 = self._flatten_theta(aA0, aB0, b0)
@@ -215,7 +226,7 @@ class PPOMILPAgent:
         if hasattr(self.model, "get_params"):
             try:
                 params = self.model.get_params()
-            except Exception:
+            except AttributeError:
                 params = None
 
         if isinstance(params, dict) and all(k in params for k in ("aA", "aB", "b")):
@@ -322,22 +333,23 @@ class PPOMILPAgent:
         )
         return Categorical(logits=logits)
 
-    def act(self, state: np.ndarray, deterministic: bool = False):
-        """Select action from the existing MILP problem node via solver pool."""
+    def act(self, state: np.ndarray) -> AlgorithmDecision:
+        """Select an action from the existing MILP problem node via the solver pool."""
         self._sync_model_params_from_theta()
         self.model.update_state(state)
         node = self.model.get_LP_formulation()
         sol_pool = self.solver.solve(node)
         if not sol_pool:
-            return None, None
+            return AlgorithmDecision(
+                action=np.zeros(len(self.model.get_desc_var_indices()), dtype=np.int32),
+                info={"n_sols": 0},
+                store=False,
+            )
 
         obj_vals = np.asarray([sol["fun"] for sol in sol_pool], dtype=np.float32)
         dist = self._dist_from_obj_vals(obj_vals)
 
-        if deterministic:
-            action_idx = int(torch.argmax(dist.logits).item())
-        else:
-            action_idx = int(dist.sample().item())
+        action_idx = int(dist.sample().item())
 
         chosen = sol_pool[action_idx]
         action = chosen["x"][self.model.get_desc_var_indices()]
@@ -384,7 +396,37 @@ class PPOMILPAgent:
             "n_sols": len(sol_pool),
             "beta": float(self.beta),
         }
-        return action, info
+        raw_action = np.asarray(action, dtype=np.float32).reshape(-1)
+        return AlgorithmDecision(
+            action=action, info=info, store=True, raw_action=raw_action
+        )
+
+    def observe(self, transition: AlgorithmTransition, info: dict) -> None:
+        self.buffer.add(
+            PPOStep(
+                state=np.asarray(transition.old_state_for_buffer, dtype=np.float32),
+                obj_vals=np.asarray(info["obj_vals"], dtype=np.float32),
+                theta_grads=np.asarray(info["theta_grads"], dtype=np.float32),
+                theta_ref=np.asarray(info["theta_ref"], dtype=np.float32),
+                action_idx=int(info["action_idx"]),
+                reward=transition.reward,
+                done=transition.terminated,
+                old_logp=float(info["old_logp"]),
+                value=float(info["value"]),
+                chosen_action_raw=transition.chosen_action_raw,
+                executed_action=transition.executed_action,
+            )
+        )
+        self.recent_samples.append(
+            {
+                "obj_vals": np.asarray(info["obj_vals"], dtype=np.float32),
+                "theta_grads": np.asarray(info["theta_grads"], dtype=np.float32),
+                "theta_ref": np.asarray(info["theta_ref"], dtype=np.float32),
+                "action_idx": int(info["action_idx"]),
+            }
+        )
+        if len(self.recent_samples) > self.diagnostic_window:
+            self.recent_samples = self.recent_samples[-self.diagnostic_window :]
 
     def _compute_policy_terms(self, steps, advantages):
         ratio_terms = []
@@ -434,7 +476,7 @@ class PPOMILPAgent:
             clip_fraction,
         )
 
-    def update(
+    def _train_on_buffer(
         self, buffer: PPORolloutBuffer, last_value: float = 0.0
     ) -> dict[str, float]:
         if len(buffer) == 0:
@@ -670,6 +712,101 @@ class PPOMILPAgent:
         )
         self._sync_model_params_from_theta()
         return out
+
+    def update(self, state: np.ndarray) -> dict:
+        if len(self.buffer) == 0:
+            return {
+                "pol_grad_norm": 0.0,
+                "metrics": {},
+                "invariance_stats": {},
+            }
+
+        bootstrap_value = 0.0
+        if not self.buffer.steps[-1].done:
+            state_final = torch.as_tensor(
+                np.asarray(state, dtype=np.float32).reshape(-1),
+                dtype=torch.float32,
+                device=self.device,
+            )
+            with torch.no_grad():
+                bootstrap_value = float(
+                    self.value_net(state_final.unsqueeze(0)).squeeze(0).item()
+                )
+
+        metrics = self._train_on_buffer(self.buffer, last_value=bootstrap_value)
+        theta_now = self.theta.detach().cpu().numpy().astype(np.float32)
+        invariance_stats = compute_linearization_stats(self.recent_samples, theta_now)
+        self.buffer = PPOBuffer()
+        return {
+            "pol_grad_norm": metrics.get("theta_norm", 0.0),
+            "metrics": metrics,
+            "invariance_stats": invariance_stats,
+        }
+
+
+def compute_linearization_stats(recent_ppo_samples, theta_now):
+    if len(recent_ppo_samples) == 0:
+        return {}
+
+    mae_vals = []
+    max_abs_vals = []
+    chosen_shift_vals = []
+    argmin_match_vals = []
+    theta_delta_norm_vals = []
+    chosen_grad_norm_vals = []
+    pool_grad_norm_mean_vals = []
+    grad_parallelism_vals = []
+    policy_shift_std_vals = []
+
+    for sample in recent_ppo_samples:
+        obj_vals = sample["obj_vals"]
+        theta_grads = sample["theta_grads"]
+        theta_ref = sample["theta_ref"]
+        action_idx = sample["action_idx"]
+
+        theta_delta = theta_now - theta_ref
+        obj_lin = obj_vals + theta_grads @ theta_delta
+
+        diff = obj_lin - obj_vals
+        mae_vals.append(float(np.mean(np.abs(diff))))
+        max_abs_vals.append(float(np.max(np.abs(diff))))
+        chosen_shift_vals.append(float(diff[action_idx]))
+        argmin_match_vals.append(float(np.argmin(obj_lin) == np.argmin(obj_vals)))
+        theta_delta_norm_vals.append(float(np.linalg.norm(theta_delta)))
+
+        grad_norms = np.linalg.norm(theta_grads, axis=1)
+        chosen_grad_norm_vals.append(float(grad_norms[action_idx]))
+        pool_grad_norm_mean_vals.append(float(np.mean(grad_norms)))
+
+        # Detect softmax invariance: measure if all gradients are parallel
+        grad_mean = np.mean(theta_grads, axis=0, keepdims=True)
+        grad_mean_norm = np.linalg.norm(grad_mean)
+        if grad_mean_norm > 1e-8:
+            proj = (theta_delta @ grad_mean.T) / (grad_mean_norm**2)
+            grad_parallelism = float(
+                proj[0] * grad_mean_norm / (np.linalg.norm(theta_delta) + 1e-8)
+            )
+        else:
+            grad_parallelism = 0.0
+        grad_parallelism_vals.append(grad_parallelism)
+
+        # Measure policy shift diversity
+        policy_shifts = obj_lin - obj_vals
+        policy_shift_std = float(np.std(policy_shifts))
+        policy_shift_std_vals.append(policy_shift_std)
+
+    return {
+        "lin_obj_mae": float(np.mean(mae_vals)),
+        "lin_obj_max_abs": float(np.max(max_abs_vals)),
+        "lin_obj_chosen_shift_mean": float(np.mean(chosen_shift_vals)),
+        "lin_obj_argmin_match": float(np.mean(argmin_match_vals)),
+        "theta_delta_ref_norm_mean": float(np.mean(theta_delta_norm_vals)),
+        "theta_delta_ref_norm_max": float(np.max(theta_delta_norm_vals)),
+        "chosen_theta_grad_norm_mean": float(np.mean(chosen_grad_norm_vals)),
+        "pool_theta_grad_norm_mean": float(np.mean(pool_grad_norm_mean_vals)),
+        "grad_parallelism_mean": float(np.mean(grad_parallelism_vals)),
+        "policy_shift_std_mean": float(np.mean(policy_shift_std_vals)),
+    }
 
 
 class PPO_MILP_Agent(PPOMILPAgent):
