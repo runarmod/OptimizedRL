@@ -168,8 +168,8 @@ class PortfolioEnvConfig(StrictConfig):
 
 
 class PpoConfig(StrictConfig):
-    nn_sample: bool | None = Field(
-        None, description="Optional PPO override for fractional-solution sampling."
+    nn_sample: bool = Field(
+        description="PPO override for fractional-solution sampling."
     )
     minimize_env_reward: bool = Field(
         description="Negate environment rewards for PPO optimization."
@@ -225,9 +225,7 @@ class AppConfig(StrictConfig):
     )
     numpy_seed: int = Field(description="Random seed for NumPy and environment setup.")
     load: bool = Field(description="Load model parameters from load_path.")
-    load_path: Path | None = Field(
-        None, description="Path to saved model parameters."
-    )
+    load_path: Path | None = Field(None, description="Path to saved model parameters.")
     device: str = Field(description="Requested Torch device, such as cpu or cuda.")
     scip: ScipConfig
     scip_brute: ScipBruteConfig

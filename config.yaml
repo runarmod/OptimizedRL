@@ -122,6 +122,7 @@ ppo:
   rollout_iters: 64
   target_kl: 0.01
   normalize_adv: True
+  nn_sample: True
 
 train_iters: 20
 rollout_iters: 1000
