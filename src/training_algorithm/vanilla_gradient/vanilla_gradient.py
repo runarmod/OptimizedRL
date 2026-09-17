@@ -1,14 +1,14 @@
 import numpy as np
 
-from src.agents.algorithm_interface import (
+from src.config.config_models import AppConfig
+from src.models.model_interface import Model
+from src.solvers.solver_interface import Solver
+from src.training_algorithm.training_algorithm_interface import (
     AlgorithmDecision,
     AlgorithmTransition,
     TrainingAlgorithm,
 )
-from src.agents.vanilla_gradient import actor, gae
-from src.config.config_models import AppConfig
-from src.models.model_interface import Model
-from src.solvers.solver_interface import Solver
+from src.training_algorithm.vanilla_gradient import actor, gae
 
 
 class VanillaGradientAlgorithm(TrainingAlgorithm):

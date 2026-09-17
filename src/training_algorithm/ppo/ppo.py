@@ -14,7 +14,7 @@ import torch
 from torch import nn
 from torch.distributions import Categorical
 
-from src.agents.algorithm_interface import (
+from src.training_algorithm.training_algorithm_interface import (
     AlgorithmDecision,
     AlgorithmTransition,
     TrainingAlgorithm,

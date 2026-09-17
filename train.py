@@ -8,11 +8,6 @@ from scipy.sparse import block_diag, csr_matrix, hstack, identity, lil_matrix, v
 from tqdm import tqdm
 
 import wandb
-from src.agents.algorithm_interface import AlgorithmTransition, TrainingAlgorithm
-from src.agents.ppo.ppo_utils import PPO_MILP_Agent
-from src.agents.vanilla_gradient.vanilla_gradient_agent import (
-    VanillaGradientAlgorithm,
-)
 from src.config.config_loader import load_config
 from src.config.config_models import AppConfig
 from src.gym_envs import example_env, portfolio_env
@@ -20,6 +15,14 @@ from src.models import example_model, portfolio_model
 from src.models.model_interface import Model
 from src.solvers import bnb, scip, scip_brute
 from src.solvers.solver_interface import Solver
+from src.training_algorithm.ppo.ppo import PPO_MILP_Agent
+from src.training_algorithm.training_algorithm_interface import (
+    AlgorithmTransition,
+    TrainingAlgorithm,
+)
+from src.training_algorithm.vanilla_gradient.vanilla_gradient import (
+    VanillaGradientAlgorithm,
+)
 
 
 def build_training_algorithm(
