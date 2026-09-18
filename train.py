@@ -8,43 +8,102 @@ from scipy.sparse import block_diag, csr_matrix, hstack, identity, lil_matrix, v
 from tqdm import tqdm
 
 import wandb
-from src.agents.ppo.ppo_utils import PPO_MILP_Agent, PPOBuffer, PPOStep
-from src.agents.vanilla_gradient import actor, gae
 from src.config.config_loader import load_config
 from src.config.config_models import AppConfig
 from src.gym_envs import example_env, portfolio_env
 from src.models import example_model, portfolio_model
+from src.models.model_interface import Model
 from src.solvers import bnb, scip, scip_brute
+from src.solvers.solver_interface import Solver
+from src.training_algorithm.ppo.ppo import PPO_MILP_Agent
+from src.training_algorithm.training_algorithm_interface import (
+    AlgorithmTransition,
+    TrainingAlgorithm,
+)
+from src.training_algorithm.vanilla_gradient.vanilla_gradient import (
+    VanillaGradientAlgorithm,
+)
+
+
+def build_training_algorithm(
+    algorithm: str,
+    config: AppConfig,
+    model: Model,
+    solver: Solver,
+    runtime_device: str,
+) -> TrainingAlgorithm:
+
+    match algorithm:
+        case "vanilla_gradient":
+            return VanillaGradientAlgorithm(
+                config=config,
+                model=model,
+                solver=solver,
+                runtime_device=runtime_device,
+            )
+
+        case "ppo":
+            ppo_cfg = config.ppo
+            return PPO_MILP_Agent(
+                model=model,
+                solver=solver,
+                state_dim=config.model.state_size,
+                gamma=ppo_cfg.gamma,
+                gae_lambda=ppo_cfg.gae_lambda,
+                clip_param=ppo_cfg.clip_param,
+                entropy_coef=ppo_cfg.entropy_coef,
+                value_coef=ppo_cfg.value_coef,
+                lr_policy=ppo_cfg.actor_lr,
+                lr_value=ppo_cfg.critic_lr,
+                policy_beta=ppo_cfg.policy_beta,
+                update_epochs=ppo_cfg.opt_epochs,
+                mini_batch_size=ppo_cfg.mini_batch_size,
+                target_kl=ppo_cfg.target_kl,
+                normalize_adv=ppo_cfg.normalize_adv,
+                normalize_obj_values=ppo_cfg.normalize_obj_values,
+                obj_norm_eps=ppo_cfg.obj_norm_eps,
+                minimize_env_reward=ppo_cfg.minimize_env_reward,
+                normalize_rewards=ppo_cfg.normalize_rewards,
+                reward_norm_eps=ppo_cfg.reward_norm_eps,
+                reward_clip=ppo_cfg.reward_clip,
+                nn_sample=ppo_cfg.nn_sample,
+                device=runtime_device,
+                rollout_iters=ppo_cfg.rollout_iters,
+                diagnostic_window=config.terminal_log_every,
+            )
+
+    raise ValueError(
+        f"training.algorithm must be 'vanilla_gradient' or 'ppo' " f"Got '{algorithm}'."
+    )
 
 
 def build_solver(config: AppConfig):
-    solver_name = config.training.solver
+    match config.training.solver:
+        case "bnb":
+            return bnb.BranchAndBoundRevamped()
 
-    if solver_name == "bnb":
-        return bnb.BranchAndBoundRevamped()
+        case "scip":
+            return scip.SCIPSolver(verbose=config.scip.verbose)
 
-    if solver_name == "scip":
-        return scip.SCIPSolver(verbose=config.scip.verbose)
-
-    if solver_name == "scip_brute":
-        return scip_brute.SCIPSolver(
-            verbose=config.scip_brute.verbose,
-            disable_heuristics=config.scip_brute.disable_heuristics,
-            disable_presolve=config.scip_brute.disable_presolve,
-            disable_separating=config.scip_brute.disable_separating,
-            disable_propagation=config.scip_brute.disable_propagation,
-            disable_conflict_analysis=config.scip_brute.disable_conflict_analysis,
-            disable_symmetry=config.scip_brute.disable_symmetry,
-            prefer_most_fractional_branching=config.scip_brute.prefer_most_fractional_branching,
-            prefer_breadth_first=config.scip_brute.prefer_breadth_first,
-            tighten_integer_projected_bounds=config.scip_brute.tighten_integer_projected_bounds,
-            mimic_bnb_pool_filter=config.scip_brute.mimic_bnb_pool_filter,
-            prefer_depth_first=config.scip_brute.prefer_depth_first,
-        )
+        case "scip_brute":
+            return scip_brute.SCIPSolver(
+                verbose=config.scip_brute.verbose,
+                disable_heuristics=config.scip_brute.disable_heuristics,
+                disable_presolve=config.scip_brute.disable_presolve,
+                disable_separating=config.scip_brute.disable_separating,
+                disable_propagation=config.scip_brute.disable_propagation,
+                disable_conflict_analysis=config.scip_brute.disable_conflict_analysis,
+                disable_symmetry=config.scip_brute.disable_symmetry,
+                prefer_most_fractional_branching=config.scip_brute.prefer_most_fractional_branching,
+                prefer_breadth_first=config.scip_brute.prefer_breadth_first,
+                tighten_integer_projected_bounds=config.scip_brute.tighten_integer_projected_bounds,
+                mimic_bnb_pool_filter=config.scip_brute.mimic_bnb_pool_filter,
+                prefer_depth_first=config.scip_brute.prefer_depth_first,
+            )
 
     raise ValueError(
         "training.solver must be one of 'scip', 'scip_brute', or 'bnb'. "
-        f"Got '{solver_name}'."
+        f"Got '{config.training.solver}'."
     )
 
 
@@ -73,71 +132,6 @@ def sanitize_env_action(env, action):
         nvec = env.action_space.nvec.astype(np.int32)
         action_arr = np.clip(action_arr, 0, nvec - 1)
     return action_arr
-
-
-def compute_ppo_linearization_stats(recent_ppo_samples, theta_now):
-    if len(recent_ppo_samples) == 0:
-        return {}
-
-    mae_vals = []
-    max_abs_vals = []
-    chosen_shift_vals = []
-    argmin_match_vals = []
-    theta_delta_norm_vals = []
-    chosen_grad_norm_vals = []
-    pool_grad_norm_mean_vals = []
-    grad_parallelism_vals = []
-    policy_shift_std_vals = []
-
-    for sample in recent_ppo_samples:
-        obj_vals = sample["obj_vals"]
-        theta_grads = sample["theta_grads"]
-        theta_ref = sample["theta_ref"]
-        action_idx = sample["action_idx"]
-
-        theta_delta = theta_now - theta_ref
-        obj_lin = obj_vals + theta_grads @ theta_delta
-
-        diff = obj_lin - obj_vals
-        mae_vals.append(float(np.mean(np.abs(diff))))
-        max_abs_vals.append(float(np.max(np.abs(diff))))
-        chosen_shift_vals.append(float(diff[action_idx]))
-        argmin_match_vals.append(float(np.argmin(obj_lin) == np.argmin(obj_vals)))
-        theta_delta_norm_vals.append(float(np.linalg.norm(theta_delta)))
-
-        grad_norms = np.linalg.norm(theta_grads, axis=1)
-        chosen_grad_norm_vals.append(float(grad_norms[action_idx]))
-        pool_grad_norm_mean_vals.append(float(np.mean(grad_norms)))
-
-        # Detect softmax invariance: measure if all gradients are parallel
-        grad_mean = np.mean(theta_grads, axis=0, keepdims=True)
-        grad_mean_norm = np.linalg.norm(grad_mean)
-        if grad_mean_norm > 1e-8:
-            proj = (theta_delta @ grad_mean.T) / (grad_mean_norm**2)
-            grad_parallelism = float(
-                proj[0] * grad_mean_norm / (np.linalg.norm(theta_delta) + 1e-8)
-            )
-        else:
-            grad_parallelism = 0.0
-        grad_parallelism_vals.append(grad_parallelism)
-
-        # Measure policy shift diversity
-        policy_shifts = obj_lin - obj_vals
-        policy_shift_std = float(np.std(policy_shifts))
-        policy_shift_std_vals.append(policy_shift_std)
-
-    return {
-        "lin_obj_mae": float(np.mean(mae_vals)),
-        "lin_obj_max_abs": float(np.max(max_abs_vals)),
-        "lin_obj_chosen_shift_mean": float(np.mean(chosen_shift_vals)),
-        "lin_obj_argmin_match": float(np.mean(argmin_match_vals)),
-        "theta_delta_ref_norm_mean": float(np.mean(theta_delta_norm_vals)),
-        "theta_delta_ref_norm_max": float(np.max(theta_delta_norm_vals)),
-        "chosen_theta_grad_norm_mean": float(np.mean(chosen_grad_norm_vals)),
-        "pool_theta_grad_norm_mean": float(np.mean(pool_grad_norm_mean_vals)),
-        "grad_parallelism_mean": float(np.mean(grad_parallelism_vals)),
-        "policy_shift_std_mean": float(np.mean(policy_shift_std_vals)),
-    }
 
 
 def main():
@@ -331,81 +325,23 @@ def main():
 
     window_size = config.plotting.window_size
     algorithm = config.training.algorithm
-    if algorithm not in ["vanilla_gradient", "ppo"]:
-        raise ValueError(
-            "training.algorithm must be either 'vanilla_gradient' or 'ppo'. "
-            f"Got '{algorithm}'."
-        )
-
-    act_lr = config.actor.lr
-    critic_lr = config.critic.lr
-    df = config.critic.df
-    beta = config.actor.beta
-    eps = config.critic.eps
-
-    n_actions = action_ub * (100 + 10 + 1) + 1
-
-    dims = [state_size, 128, 128, 1]
     solver = build_solver(config)
-
-    act = None
-    ppo_agent = None
-    if algorithm == "vanilla_gradient":
-        critic = gae.GAE(dims, critic_lr, df, eps, 0.1, runtime_device)
-        act = actor.Actor(
-            m,
-            solver,
-            critic,
-            beta=beta,
-            lr=act_lr,
-            df=df,
-            nn_sample=config.actor.nn_sample,
-            sampled_grad=config.actor.sampled_grad,
-        )
-    else:
-        ppo_cfg = config.ppo
-        ppo_agent = PPO_MILP_Agent(
-            model=m,
-            solver=solver,
-            state_dim=state_size,
-            gamma=ppo_cfg.gamma,
-            gae_lambda=ppo_cfg.gae_lambda,
-            clip_param=ppo_cfg.clip_param,
-            entropy_coef=ppo_cfg.entropy_coef,
-            value_coef=ppo_cfg.value_coef,
-            lr_policy=ppo_cfg.actor_lr,
-            lr_value=ppo_cfg.critic_lr,
-            policy_beta=ppo_cfg.policy_beta,
-            update_epochs=ppo_cfg.opt_epochs,
-            mini_batch_size=ppo_cfg.mini_batch_size,
-            target_kl=ppo_cfg.target_kl,
-            normalize_adv=ppo_cfg.normalize_adv,
-            normalize_obj_values=ppo_cfg.normalize_obj_values,
-            obj_norm_eps=ppo_cfg.obj_norm_eps,
-            minimize_env_reward=ppo_cfg.minimize_env_reward,
-            normalize_rewards=ppo_cfg.normalize_rewards,
-            reward_norm_eps=ppo_cfg.reward_norm_eps,
-            reward_clip=ppo_cfg.reward_clip,
-            nn_sample=(
-                config.actor.nn_sample
-                if ppo_cfg.nn_sample is None
-                else ppo_cfg.nn_sample
-            ),
-            device=runtime_device,
-        )
+    training_algorithm = build_training_algorithm(
+        algorithm,
+        config,
+        m,
+        solver,
+        runtime_device,
+    )
 
     state = gym_model.state
 
-    training_iters = config.train_iters
-    vanilla_rollout_iters = config.rollout_iters
-    ppo_rollout_iters = config.ppo.rollout_iters
-    rollout_iters = ppo_rollout_iters if algorithm == "ppo" else vanilla_rollout_iters
+    rollout_iters = training_algorithm.rollout_iters
     total_iters = config.total_iters
 
     ep_reward = 0
     economic_ep_reward = 0
     ep_rewards = []
-    rewards = []
     diagnostics = {
         "step_count": 0,
         "reward_sum": 0.0,
@@ -430,19 +366,13 @@ def main():
 
     recent_rewards = []
     recent_n_sols = []
-    recent_ppo_samples = []
     recent_action_mismatch = []
     recent_action_mismatch_l2 = []
-
-    columns = ["c1", "c2", "c3"]
-    c_table = wandb.Table(columns=columns)
 
     iter_counter = 0
     expected_ep_reward = None
     last_calced = 0
     for _ in tqdm(range(total_iters), desc="Total Iterations"):
-        ppo_buffer = PPOBuffer() if algorithm == "ppo" else None
-
         if last_calced > comp_expected_every and comp_expected:
             expected_ep_reward = calc_expected_reward(
                 -c, A, B, C, D, E, T, state, solver
@@ -464,55 +394,30 @@ def main():
             if hasattr(m, "update_scenarios") and hasattr(gym_model, "return_window"):
                 m.update_scenarios(gym_model.return_window)
 
-            store = True
-            if algorithm == "vanilla_gradient":
-                act_out = act.act(state)
-                if act_out is None:
-                    action, act_info = (
-                        None,
-                        {"fathomed": False, "nab": 0.0, "t_nab": 0.0, "n_sols": 0},
-                    )
-                else:
-                    action, act_info = act_out
-                fathomed_counter = (
-                    fathomed_counter + 1 if act_info["fathomed"] else fathomed_counter
-                )
-                nab = act_info["nab"]
-                t_nab = act_info["t_nab"]
-                if action is None:
-                    action = np.zeros_like(state)
-                    store = False
-                    diagnostics["no_action_count"] += 1
-                action = sanitize_env_action(gym_model, action)
-            else:
-                chosen_action_raw = None
-                action, act_info = ppo_agent.act(state)
-                if action is None or act_info is None:
-                    action = np.zeros((action_size,), dtype=np.int32)
-                    store = False
-                    diagnostics["no_action_count"] += 1
-                else:
-                    chosen_action_raw = np.asarray(action, dtype=np.float32).reshape(-1)
-                    action = sanitize_env_action(gym_model, action)
+            decision = training_algorithm.act(state)
+            action = sanitize_env_action(gym_model, decision.action)
+            act_info = decision.info
+            store = decision.store
+            chosen_action_raw = decision.raw_action
+            if not store:
+                diagnostics["no_action_count"] += 1
+            if act_info.get("fathomed", False):
+                fathomed_counter += 1
 
-                if store and chosen_action_raw is not None:
-                    executed_action = np.asarray(action, dtype=np.float32).reshape(-1)
-                    mismatch = float(
-                        not np.allclose(chosen_action_raw, executed_action, atol=1e-6)
-                    )
-                    mismatch_l2 = float(
-                        np.linalg.norm(chosen_action_raw - executed_action)
-                    )
-                    recent_action_mismatch.append(mismatch)
-                    recent_action_mismatch_l2.append(mismatch_l2)
-                    if len(recent_action_mismatch) > diagnostic_window:
-                        recent_action_mismatch = recent_action_mismatch[
-                            -diagnostic_window:
-                        ]
-                    if len(recent_action_mismatch_l2) > diagnostic_window:
-                        recent_action_mismatch_l2 = recent_action_mismatch_l2[
-                            -diagnostic_window:
-                        ]
+            if store and chosen_action_raw is not None:
+                executed_action = np.asarray(action, dtype=np.float32).reshape(-1)
+                mismatch = float(
+                    not np.allclose(chosen_action_raw, executed_action, atol=1e-6)
+                )
+                mismatch_l2 = float(np.linalg.norm(chosen_action_raw - executed_action))
+                recent_action_mismatch.append(mismatch)
+                recent_action_mismatch_l2.append(mismatch_l2)
+                if len(recent_action_mismatch) > diagnostic_window:
+                    recent_action_mismatch = recent_action_mismatch[-diagnostic_window:]
+                if len(recent_action_mismatch_l2) > diagnostic_window:
+                    recent_action_mismatch_l2 = recent_action_mismatch_l2[
+                        -diagnostic_window:
+                    ]
 
             old_state_for_buffer = np.asarray(state).copy()
             state, reward, terminated, _, info = gym_model.step(action)
@@ -546,47 +451,22 @@ def main():
             diagnostics["risk_utilization_sum"] += risk_utilization
             diagnostics["empirical_cvar_sum"] += empirical_cvar
 
-            if algorithm == "vanilla_gradient" and store:
-                act.update_buffers(
-                    reward, action_number, old_state, new_state, nab, t_nab
-                )
-            elif algorithm == "ppo" and store:
-                ppo_buffer.add(
-                    PPOStep(
-                        state=np.asarray(old_state_for_buffer, dtype=np.float32),
-                        obj_vals=np.asarray(act_info["obj_vals"], dtype=np.float32),
-                        theta_grads=np.asarray(
-                            act_info["theta_grads"], dtype=np.float32
+            if store:
+                training_algorithm.observe(
+                    AlgorithmTransition(
+                        old_state_for_buffer=np.asarray(
+                            old_state_for_buffer, dtype=np.float32
                         ),
-                        theta_ref=np.asarray(act_info["theta_ref"], dtype=np.float32),
-                        action_idx=int(act_info["action_idx"]),
                         reward=float(reward),
-                        done=bool(terminated),
-                        old_logp=float(act_info["old_logp"]),
-                        value=float(act_info["value"]),
-                        chosen_action_raw=np.asarray(
-                            chosen_action_raw, dtype=np.float32
-                        ),
+                        terminated=bool(terminated),
+                        action_number=action_number,
+                        old_state=old_state,
+                        new_state=new_state,
+                        chosen_action_raw=chosen_action_raw,
                         executed_action=np.asarray(action, dtype=np.float32),
-                    )
+                    ),
+                    act_info,
                 )
-                recent_ppo_samples.append(
-                    {
-                        "state": np.asarray(old_state_for_buffer, dtype=np.float32),
-                        "obj_vals": np.asarray(act_info["obj_vals"], dtype=np.float32),
-                        "actions": np.asarray(act_info["actions"], dtype=np.float32),
-                        "theta_grads": np.asarray(
-                            act_info["theta_grads"], dtype=np.float32
-                        ),
-                        "theta_ref": np.asarray(
-                            act_info["theta_ref"], dtype=np.float32
-                        ),
-                        "action_idx": int(act_info["action_idx"]),
-                        "old_logp": float(act_info["old_logp"]),
-                    }
-                )
-                if len(recent_ppo_samples) > diagnostic_window:
-                    recent_ppo_samples = recent_ppo_samples[-diagnostic_window:]
 
             ep_reward += reward
             economic_ep_reward += economic_reward
@@ -653,41 +533,9 @@ def main():
                     )
                     last_calced = 0
 
-        if algorithm == "vanilla_gradient":
-            pol_grad = act.train(
-                iters=training_iters,
-                sample=config.actor.sample,
-                num_samples=config.actor.num_samples,
-            )
-            pol_grad_norm = np.linalg.norm(pol_grad)
-            ppo_metrics = {}
-            ppo_invariance_stats = {}
-        else:
-            bootstrap_value = 0.0
-            if len(ppo_buffer) > 0 and not ppo_buffer.steps[-1].done:
-                state_final = torch.as_tensor(
-                    np.asarray(state, dtype=np.float32).reshape(-1),
-                    dtype=torch.float32,
-                    device=ppo_agent.device,
-                )
-                with torch.no_grad():
-                    bootstrap_value = float(
-                        ppo_agent.value_net(state_final.unsqueeze(0)).squeeze(0).item()
-                    )
-            ppo_metrics = (
-                ppo_agent.update(ppo_buffer, last_value=bootstrap_value)
-                if len(ppo_buffer) > 0
-                else {}
-            )
-            pol_grad_norm = ppo_metrics.get("theta_norm", 0.0)
-
-            # Compute invariance diagnostics AFTER update using stored samples
-            ppo_invariance_stats = {}
-            if len(recent_ppo_samples) > 0:
-                theta_now = ppo_agent.theta.detach().cpu().numpy().astype(np.float32)
-                ppo_invariance_stats = compute_ppo_linearization_stats(
-                    recent_ppo_samples, theta_now
-                )
+        update_result = training_algorithm.update(state)
+        pol_grad_norm = update_result["pol_grad_norm"]
+        algorithm_metrics = update_result["metrics"]
 
         c_diff = ((-c - m.c) ** 2).mean()
         aA_change = np.sum((aA - m.aA) ** 2)
@@ -700,8 +548,8 @@ def main():
             "b_change": b_change,
             "pol_grad": pol_grad_norm,
         }
-        for k, v in ppo_metrics.items():
-            metrics[f"ppo_{k}"] = v
+        for k, v in algorithm_metrics.items():
+            metrics[f"{algorithm}_{k}"] = v
         run.log(metrics)
 
 
