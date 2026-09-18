@@ -63,5 +63,4 @@ class VanillaGradientAlgorithm(TrainingAlgorithm):
         return {
             "pol_grad_norm": float(np.linalg.norm(pol_grad)),
             "metrics": {},
-            "invariance_stats": {},
         }

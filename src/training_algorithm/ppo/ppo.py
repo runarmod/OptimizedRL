@@ -718,7 +718,6 @@ class PPOMILPAgent(TrainingAlgorithm):
             return {
                 "pol_grad_norm": 0.0,
                 "metrics": {},
-                "invariance_stats": {},
             }
 
         bootstrap_value = 0.0
@@ -739,8 +738,7 @@ class PPOMILPAgent(TrainingAlgorithm):
         self.buffer = PPOBuffer()
         return {
             "pol_grad_norm": metrics.get("theta_norm", 0.0),
-            "metrics": metrics,
-            "invariance_stats": invariance_stats,
+            "metrics": metrics | invariance_stats,
         }
 
 
