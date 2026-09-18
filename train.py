@@ -550,8 +550,6 @@ def main():
         }
         for k, v in algorithm_metrics.items():
             metrics[f"{algorithm}_{k}"] = v
-        for k, v in update_result["invariance_stats"].items():
-            metrics[f"ppo_{k}"] = v
         run.log(metrics)
 
 
