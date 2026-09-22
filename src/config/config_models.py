@@ -212,6 +212,17 @@ class PpoConfig(StrictConfig):
     )
 
 
+class VanillaGradientConfig(StrictConfig):
+    critic: CriticConfig
+    actor: ActorConfig
+    train_iters: int = Field(
+        gt=0, description="Vanilla-gradient training epochs per rollout."
+    )
+    rollout_iters: int = Field(
+        gt=0, description="Vanilla-gradient rollout steps per training iteration."
+    )
+
+
 class AppConfig(StrictConfig):
     name: str = Field(description="Experiment name.")
     wandb_mode: Literal["online", "offline", "disabled", "shared"] = Field(
@@ -233,17 +244,10 @@ class AppConfig(StrictConfig):
     model: ModelConfig
     gym: GymConfig
     plotting: PlottingConfig
-    critic: CriticConfig
-    actor: ActorConfig
     portfolio_model: PortfolioModelConfig
     portfolio_env: PortfolioEnvConfig
     ppo: PpoConfig
-    train_iters: int = Field(
-        gt=0, description="Vanilla-gradient training epochs per rollout."
-    )
-    rollout_iters: int = Field(
-        gt=0, description="Vanilla-gradient rollout steps per training iteration."
-    )
+    vanilla_gradient: VanillaGradientConfig
     total_iters: int = Field(gt=0, description="Total outer training iterations.")
     explicit_sol_time: int = Field(
         gt=0, description="Time horizon used by expected-reward evaluation."

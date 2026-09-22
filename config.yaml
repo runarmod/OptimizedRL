@@ -48,19 +48,6 @@ gym:
 plotting:
   window_size: 10
 
-critic:
-  lr: 0.01
-  df: 0.9
-  eps: 0.01
-
-actor:
-  sampled_grad: True
-  nn_sample: True
-  lr: 0.001
-  beta: 0.05
-  sample: False
-  num_samples: 0.3
-
 portfolio_model:
   lr_mult_aA: 1.0
   lr_mult_aB: 1.0
@@ -124,8 +111,21 @@ ppo:
   normalize_adv: True
   nn_sample: True
 
-train_iters: 20
-rollout_iters: 1000
+vanilla_gradient:
+  critic:
+    lr: 0.01
+    df: 0.9
+    eps: 0.01
+  actor:
+    sampled_grad: True
+    nn_sample: True
+    lr: 0.001
+    beta: 0.05
+    sample: False
+    num_samples: 0.3
+  train_iters: 20
+  rollout_iters: 1000
+
 total_iters: 100000
 
 explicit_sol_time: 4

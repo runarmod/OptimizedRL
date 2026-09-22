@@ -15,11 +15,12 @@ class VanillaGradientAlgorithm(TrainingAlgorithm):
     def __init__(
         self, config: AppConfig, model: Model, solver: Solver, runtime_device: str
     ):
+        vanilla_gradient_config = config.vanilla_gradient
         critic = gae.GAE(
             [config.model.state_size, 128, 128, 1],
-            config.critic.lr,
-            config.critic.df,
-            config.critic.eps,
+            vanilla_gradient_config.critic.lr,
+            vanilla_gradient_config.critic.df,
+            vanilla_gradient_config.critic.eps,
             0.1,
             runtime_device,
         )
@@ -27,16 +28,16 @@ class VanillaGradientAlgorithm(TrainingAlgorithm):
             model,
             solver,
             critic,
-            beta=config.actor.beta,
-            lr=config.actor.lr,
-            df=config.critic.df,
-            nn_sample=config.actor.nn_sample,
-            sampled_grad=config.actor.sampled_grad,
+            beta=vanilla_gradient_config.actor.beta,
+            lr=vanilla_gradient_config.actor.lr,
+            df=vanilla_gradient_config.critic.df,
+            nn_sample=vanilla_gradient_config.actor.nn_sample,
+            sampled_grad=vanilla_gradient_config.actor.sampled_grad,
         )
-        self.rollout_iters = config.rollout_iters
-        self.training_iters = config.train_iters
-        self.sample = config.actor.sample
-        self.num_samples = config.actor.num_samples
+        self.rollout_iters = vanilla_gradient_config.rollout_iters
+        self.training_iters = vanilla_gradient_config.train_iters
+        self.sample = vanilla_gradient_config.actor.sample
+        self.num_samples = vanilla_gradient_config.actor.num_samples
         self.action_size = config.model.action_size
 
     def act(self, state: np.ndarray) -> AlgorithmDecision:
