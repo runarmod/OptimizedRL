@@ -25,6 +25,9 @@ class Arb_binary(gym.Env):
         self.std = std
         self.t = 1
 
+    def get_plot_metrics(self, info):
+        return {}
+
     def _get_obs(self):
         pass
 
