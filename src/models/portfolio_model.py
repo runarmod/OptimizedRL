@@ -330,7 +330,12 @@ class PortfolioModel(Model):
         return np.hstack((dLdc, dLdaA, dLdaB, dLdb))
 
     def get_params(self):
-        return super().get_params()
+        return {
+            "aA": self.aA.copy(),
+            "aB": self.aB.copy(),
+            "b": self.b.copy(),
+            "c": self.c.copy(),
+        }
 
     def update_params(self, grad, lr):
         grad = -grad
