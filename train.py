@@ -115,7 +115,7 @@ def resolve_runtime_device(configured_device):
     return device
 
 
-def build_models(config: AppConfig, project_root: Path) -> tuple[Model, Env]:
+def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, Env]:
     problem_name = config.problem
     configured_seed = config.numpy_seed
     effective_seed = configured_seed
@@ -308,7 +308,7 @@ def main():
 
     diagnostic_window = config.terminal_log_every
 
-    model, env = build_models(config, project_root)
+    model, env = build_model_and_env(config, project_root)
     original_A = env.A
     original_B = env.B
     original_c = model.c
