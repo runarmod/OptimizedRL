@@ -74,7 +74,7 @@ def build_training_algorithm(
             )
 
     raise ValueError(
-        f"training.algorithm must be 'vanilla_gradient' or 'ppo' " f"Got '{algorithm}'."
+        f"training.algorithm must be 'vanilla_gradient' or 'ppo' Got '{algorithm}'."
     )
 
 
@@ -344,21 +344,6 @@ def main():
     ep_reward = 0
     economic_ep_reward = 0
     ep_rewards = []
-    diagnostics = {
-        "step_count": 0,
-        "reward_sum": 0.0,
-        "economic_reward_sum": 0.0,
-        "reward_sq_sum": 0.0,
-        "episode_count": 0,
-        "episode_reward_sum": 0.0,
-        "economic_episode_reward_sum": 0.0,
-        "episode_length_sum": 0.0,
-        "no_action_count": 0,
-        "turnover_sum": 0.0,
-        "risk_utilization_sum": 0.0,
-        "empirical_cvar_sum": 0.0,
-    }
-
     T = config.explicit_sol_time
     fathomed_counter = 0
     ep_length = 0
@@ -393,8 +378,6 @@ def main():
             iter_counter += 1
             ep_length += 1
             last_calced += 1
-            diagnostics["step_count"] += 1
-
             model.update_from_environment(env)
 
             decision = training_algorithm.act(state)
@@ -402,8 +385,6 @@ def main():
             act_info = decision.info
             store = decision.store
             chosen_action_raw = decision.raw_action
-            if not store:
-                diagnostics["no_action_count"] += 1
             if act_info.get("fathomed", False):
                 fathomed_counter += 1
 
@@ -427,14 +408,14 @@ def main():
             action_number = info["action"]
             old_state = info["old_state"]
             new_state = info["new_state"]
-            turnover = float(info.get("turnover", 0.0))
-            risk_utilization = float(info.get("risk_utilization", 0.0))
-            economic_reward = float(info.get("economic_reward", -reward))
-            empirical_cvar = float(info.get("empirical_cvar", 0.0))
-
-            diagnostics["turnover_sum"] += turnover
-            diagnostics["risk_utilization_sum"] += risk_utilization
-            diagnostics["empirical_cvar_sum"] += empirical_cvar
+            n_sols = 0 if act_info is None else act_info.get("n_sols", 0)
+            step_metrics = {
+                "reward": reward,
+                "action": action_number,
+                "n_sols": n_sols,
+            }
+            environment_metrics = env.get_plot_metrics(info)
+            step_metrics.update(environment_metrics)
 
             if store:
                 training_algorithm.observe(
@@ -454,42 +435,24 @@ def main():
                 )
 
             ep_reward += reward
-            economic_ep_reward += economic_reward
-            n_sols = 0 if (act_info is None) else act_info.get("n_sols", 0)
-            diagnostics["reward_sum"] += reward
-            diagnostics["economic_reward_sum"] += economic_reward
-            diagnostics["reward_sq_sum"] += reward**2
+            economic_ep_reward += environment_metrics.get("economic_reward", 0.0)
             recent_rewards.append(float(reward))
             recent_n_sols.append(float(n_sols))
             if len(recent_rewards) > diagnostic_window:
                 recent_rewards = recent_rewards[-diagnostic_window:]
             if len(recent_n_sols) > diagnostic_window:
                 recent_n_sols = recent_n_sols[-diagnostic_window:]
-            run.log(
-                {
-                    "reward": reward,
-                    "economic_reward": economic_reward,
-                    "action": action_number,
-                    "n_sols": n_sols,
-                    "turnover": turnover,
-                    "risk_utilization": risk_utilization,
-                    "empirical_cvar": empirical_cvar,
-                }
-            )
+            run.log(step_metrics)
 
             if terminated or i == rollout_iters - 1:
                 ep_rewards.append(ep_reward)
-                diagnostics["episode_count"] += 1
-                diagnostics["episode_reward_sum"] += ep_reward
-                diagnostics["economic_episode_reward_sum"] += economic_ep_reward
-                diagnostics["episode_length_sum"] += ep_length
-
                 metric = {
                     "ep_reward": ep_reward,
-                    "economic_ep_reward": economic_ep_reward,
                     "fathomed_counter": fathomed_counter,
                     "ep_length": ep_length,
                 }
+                if "economic_reward" in environment_metrics:
+                    metric["economic_ep_reward"] = economic_ep_reward
 
                 if len(ep_rewards) == window_size:
                     metric["smooth_ep_reward"] = sum(ep_rewards) / window_size

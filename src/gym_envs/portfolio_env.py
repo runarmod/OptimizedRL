@@ -118,6 +118,14 @@ class PortfolioEnv(gym.Env):
         self.alpha_state = np.zeros((B.shape[1],), dtype=float)
         self.t = 1
 
+    def get_plot_metrics(self, info):
+        return {
+            "economic_reward": float(info["economic_reward"]),
+            "turnover": float(info["turnover"]),
+            "risk_utilization": float(info["risk_utilization"]),
+            "empirical_cvar": float(info["empirical_cvar"]),
+        }
+
     def _get_obs(self):
         pass
 
