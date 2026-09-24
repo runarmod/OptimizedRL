@@ -326,15 +326,15 @@ def main():
     diagnostic_window = config.terminal_log_every
 
     m, gym_model = build_models(config, project_root)
-    c = gym_model.c
-    A = gym_model.A
-    B = gym_model.B
-    C = m.C
-    D = m.D
-    E = m.E
-    aA = m.aA.copy()
-    aB = m.aB.copy()
-    b = m.b.copy()
+    original_c = gym_model.c
+    original_A = gym_model.A
+    original_B = gym_model.B
+    original_C = m.C
+    original_D = m.D
+    original_E = m.E
+    original_aA = m.aA.copy()
+    original_aB = m.aB.copy()
+    original_b = m.b.copy()
     action_size = config.model.action_size
     state = gym_model.state
 
@@ -398,7 +398,15 @@ def main():
     for _ in tqdm(range(total_iters), desc="Total Iterations"):
         if last_calced > comp_expected_every and comp_expected:
             expected_ep_reward = calc_expected_reward(
-                -c, A, B, C, D, E, T, state, solver
+                -original_c,
+                original_A,
+                original_B,
+                original_C,
+                original_D,
+                original_E,
+                T,
+                state,
+                solver,
             )
             last_calced = 0
 
@@ -552,7 +560,15 @@ def main():
                     m.update_prices(gym_model.prices)
                 if last_calced > comp_expected_every and comp_expected:
                     expected_ep_reward = calc_expected_reward(
-                        -c, A, B, C, D, E, T, state, solver
+                        -original_c,
+                        original_A,
+                        original_B,
+                        original_C,
+                        original_D,
+                        original_E,
+                        T,
+                        state,
+                        solver,
                     )
                     last_calced = 0
 
@@ -560,12 +576,18 @@ def main():
         pol_grad_norm = update_result["pol_grad_norm"]
         algorithm_metrics = update_result["metrics"]
 
-        c_diff = ((-c - m.c) ** 2).mean()
-        aA_change = np.sum((aA - m.aA) ** 2)
-        aB_change = np.sum((aB - m.aB) ** 2)
-        b_change = np.sum((b - m.b) ** 2)
+        model_params = m.get_params()
+        c = model_params["c"]
+        aA = model_params["aA"]
+        aB = model_params["aB"]
+        b = model_params["b"]
+
+        c_change = np.sum((-original_c - c) ** 2)
+        aA_change = np.sum((original_aA - aA) ** 2)
+        aB_change = np.sum((original_aB - aB) ** 2)
+        b_change = np.sum((original_b - b) ** 2)
         metrics = {
-            "c_diff": c_diff,
+            "c_change": c_change,
             "aA_change": aA_change,
             "aB_change": aB_change,
             "b_change": b_change,

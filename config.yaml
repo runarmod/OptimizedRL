@@ -30,7 +30,7 @@ scip_brute:
 
 training:
   # options: vanilla_gradient | ppo
-  algorithm: "vanilla_gradient"
+  algorithm: "ppo"
   # options: scip | scip_brute | bnb
   solver: "scip"
 
@@ -124,7 +124,7 @@ vanilla_gradient:
     sample: False
     num_samples: 0.3
   train_iters: 20
-  rollout_iters: 1000
+  rollout_iters: 64
 
 total_iters: 100000
 
