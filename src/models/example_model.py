@@ -7,6 +7,7 @@ from src.models.model_interface import Model
 
 class Arbbin(Model):  # Fix D
     def __init__(self, c, C, D, E, aA, aB, b, bounds, integer, pf, exact=False):
+        super().__init__()
         self.c = c.astype(float)
         self.C = C.astype(float)
         self.D = D.astype(float)
@@ -76,14 +77,6 @@ class Arbbin(Model):  # Fix D
         res = np.hstack((dLdc, dLdaA, dLdaB, dLdb))
 
         return res
-
-    def get_params(self):
-        return {
-            "aA": self.aA.copy(),
-            "aB": self.aB.copy(),
-            "b": self.b.copy(),
-            "c": self.c.copy(),
-        }
 
     def update_params(self, grad, lr):
         # Initialize index tracker

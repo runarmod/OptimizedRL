@@ -41,6 +41,7 @@ class PortfolioModel(Model):
         price_levels_mode="off",
         initial_asset_price=100.0,
     ):
+        super().__init__()
         self.c = c.astype(float)
         self.C = C.astype(float)
         self.D = D.astype(float)
@@ -332,14 +333,6 @@ class PortfolioModel(Model):
         dLdaB = -np.array(dLdaB).flatten()
         dLdb = -np.array(dLdb).flatten()
         return np.hstack((dLdc, dLdaA, dLdaB, dLdb))
-
-    def get_params(self):
-        return {
-            "aA": self.aA.copy(),
-            "aB": self.aB.copy(),
-            "b": self.b.copy(),
-            "c": self.c.copy(),
-        }
 
     def update_params(self, grad, lr):
         grad = -grad
