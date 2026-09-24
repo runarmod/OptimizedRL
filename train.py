@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import numpy as np
@@ -6,7 +5,6 @@ import torch
 import yaml
 from tqdm import tqdm
 
-import wandb
 from src.config.config_loader import load_config
 from src.config.config_models import AppConfig
 from src.gym_envs import example_env, portfolio_env
@@ -24,6 +22,7 @@ from src.training_algorithm.vanilla_gradient.vanilla_gradient import (
     VanillaGradientAlgorithm,
 )
 from src.utils.calc_expected import calc_expected_reward
+from src.utils.plotting import Plotter
 
 
 def build_training_algorithm(
@@ -306,8 +305,6 @@ def main():
     config = load_config(config_path)
     runtime_device = resolve_runtime_device(config.device)
 
-    diagnostic_window = config.terminal_log_every
-
     model, env = build_model_and_env(config, project_root)
     original_A = env.A
     original_B = env.B
@@ -317,15 +314,7 @@ def main():
     original_model_params = model.get_params()
     state = env.state
 
-    os.environ.setdefault("WANDB_SILENT", "true")
-    os.environ.setdefault("WANDB_CONSOLE", "off")
-    run = wandb.init(
-        name=config.name,
-        mode=config.wandb_mode,
-        config=config.model_dump(mode="json"),
-    )
-
-    window_size = config.plotting.window_size
+    plotter = Plotter(config)
     algorithm = config.training.algorithm
     solver = build_solver(config)
     training_algorithm = build_training_algorithm(
@@ -341,22 +330,11 @@ def main():
     rollout_iters = training_algorithm.rollout_iters
     total_iters = config.total_iters
 
-    ep_reward = 0
-    economic_ep_reward = 0
-    ep_rewards = []
     T = config.explicit_sol_time
-    fathomed_counter = 0
-    ep_length = 0
 
     comp_expected = config.comp_expected
     comp_expected_every = config.comp_expected_every
 
-    recent_rewards = []
-    recent_n_sols = []
-    recent_action_mismatch = []
-    recent_action_mismatch_l2 = []
-
-    iter_counter = 0
     expected_ep_reward = None
     last_calced = 0
     for _ in tqdm(range(total_iters), desc="Total Iterations"):
@@ -375,8 +353,6 @@ def main():
             last_calced = 0
 
         for i in tqdm(range(rollout_iters), leave=False, desc="Rollout"):
-            iter_counter += 1
-            ep_length += 1
             last_calced += 1
             model.update_from_environment(env)
 
@@ -385,37 +361,13 @@ def main():
             act_info = decision.info
             store = decision.store
             chosen_action_raw = decision.raw_action
-            if act_info.get("fathomed", False):
-                fathomed_counter += 1
-
-            if store and chosen_action_raw is not None:
-                executed_action = np.asarray(action, dtype=np.float32).reshape(-1)
-                mismatch = float(
-                    not np.allclose(chosen_action_raw, executed_action, atol=1e-6)
-                )
-                mismatch_l2 = float(np.linalg.norm(chosen_action_raw - executed_action))
-                recent_action_mismatch.append(mismatch)
-                recent_action_mismatch_l2.append(mismatch_l2)
-                if len(recent_action_mismatch) > diagnostic_window:
-                    recent_action_mismatch = recent_action_mismatch[-diagnostic_window:]
-                if len(recent_action_mismatch_l2) > diagnostic_window:
-                    recent_action_mismatch_l2 = recent_action_mismatch_l2[
-                        -diagnostic_window:
-                    ]
-
             old_state_for_buffer = np.asarray(state).copy()
             state, reward, terminated, _, info = env.step(action)
             action_number = info["action"]
             old_state = info["old_state"]
             new_state = info["new_state"]
             n_sols = 0 if act_info is None else act_info.get("n_sols", 0)
-            step_metrics = {
-                "reward": reward,
-                "action": action_number,
-                "n_sols": n_sols,
-            }
             environment_metrics = env.get_plot_metrics(info)
-            step_metrics.update(environment_metrics)
 
             if store:
                 training_algorithm.observe(
@@ -434,38 +386,19 @@ def main():
                     act_info,
                 )
 
-            ep_reward += reward
-            economic_ep_reward += environment_metrics.get("economic_reward", 0.0)
-            recent_rewards.append(float(reward))
-            recent_n_sols.append(float(n_sols))
-            if len(recent_rewards) > diagnostic_window:
-                recent_rewards = recent_rewards[-diagnostic_window:]
-            if len(recent_n_sols) > diagnostic_window:
-                recent_n_sols = recent_n_sols[-diagnostic_window:]
-            run.log(step_metrics)
-
-            if terminated or i == rollout_iters - 1:
-                ep_rewards.append(ep_reward)
-                metric = {
-                    "ep_reward": ep_reward,
-                    "fathomed_counter": fathomed_counter,
-                    "ep_length": ep_length,
-                }
-                if "economic_reward" in environment_metrics:
-                    metric["economic_ep_reward"] = economic_ep_reward
-
-                if len(ep_rewards) == window_size:
-                    metric["smooth_ep_reward"] = sum(ep_rewards) / window_size
-                    ep_rewards = []
+            episode_done = terminated or i == rollout_iters - 1
+            plotter.log_step(
+                reward=float(reward),
+                action=action_number,
+                n_sols=n_sols,
+                environment_metrics=environment_metrics,
+                fathomed=act_info.get("fathomed", False),
+                episode_done=episode_done,
+                expected_ep_reward=(expected_ep_reward if comp_expected else None),
+            )
+            if episode_done:
                 if comp_expected and expected_ep_reward is not None:
-                    metric["expected_ep_reward"] = expected_ep_reward
-                    metric["distance_from_opt_pol"] = expected_ep_reward - ep_reward
                     expected_ep_reward = None
-                run.log(metric)
-                ep_reward = 0
-                economic_ep_reward = 0
-                fathomed_counter = 0
-                ep_length = 0
                 state, _ = env.reset()
                 model.update_from_environment(env)
                 if last_calced > comp_expected_every and comp_expected:
@@ -483,25 +416,10 @@ def main():
                     last_calced = 0
 
         update_result = training_algorithm.update(state)
-        pol_grad_norm = update_result["pol_grad_norm"]
-        algorithm_metrics = update_result["metrics"]
-
         model_params = model.get_params()
-
-        c_change = np.sum((-original_model_params.c - model_params.c) ** 2)
-        aA_change = np.sum((original_model_params.aA - model_params.aA) ** 2)
-        aB_change = np.sum((original_model_params.aB - model_params.aB) ** 2)
-        b_change = np.sum((original_model_params.b - model_params.b) ** 2)
-        metrics = {
-            "c_change": c_change,
-            "aA_change": aA_change,
-            "aB_change": aB_change,
-            "b_change": b_change,
-            "pol_grad": pol_grad_norm,
-        }
-        for k, v in algorithm_metrics.items():
-            metrics[f"{algorithm}_{k}"] = v
-        run.log(metrics)
+        plotter.log_update(
+            algorithm, update_result, original_model_params, model_params
+        )
 
 
 if __name__ == "__main__":
