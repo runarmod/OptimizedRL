@@ -311,13 +311,10 @@ def main():
     model, env = build_model_and_env(config, project_root)
     original_A = env.A
     original_B = env.B
-    original_c = model.c
     original_C = model.C
     original_D = model.D
     original_E = model.E
-    original_aA = model.aA.copy()
-    original_aB = model.aB.copy()
-    original_b = model.b.copy()
+    original_model_params = model.get_params()
     state = env.state
 
     os.environ.setdefault("WANDB_SILENT", "true")
@@ -380,7 +377,7 @@ def main():
     for _ in tqdm(range(total_iters), desc="Total Iterations"):
         if last_calced > comp_expected_every and comp_expected:
             expected_ep_reward = calc_expected_reward(
-                -original_c,
+                -original_model_params.c,
                 original_A,
                 original_B,
                 original_C,
@@ -510,7 +507,7 @@ def main():
                 model.update_from_environment(env)
                 if last_calced > comp_expected_every and comp_expected:
                     expected_ep_reward = calc_expected_reward(
-                        -original_c,
+                        -original_model_params.c,
                         original_A,
                         original_B,
                         original_C,
@@ -527,15 +524,11 @@ def main():
         algorithm_metrics = update_result["metrics"]
 
         model_params = model.get_params()
-        c = model_params["c"]
-        aA = model_params["aA"]
-        aB = model_params["aB"]
-        b = model_params["b"]
 
-        c_change = np.sum((-original_c - c) ** 2)
-        aA_change = np.sum((original_aA - aA) ** 2)
-        aB_change = np.sum((original_aB - aB) ** 2)
-        b_change = np.sum((original_b - b) ** 2)
+        c_change = np.sum((-original_model_params.c - model_params.c) ** 2)
+        aA_change = np.sum((original_model_params.aA - model_params.aA) ** 2)
+        aB_change = np.sum((original_model_params.aB - model_params.aB) ** 2)
+        b_change = np.sum((original_model_params.b - model_params.b) ** 2)
         metrics = {
             "c_change": c_change,
             "aA_change": aA_change,

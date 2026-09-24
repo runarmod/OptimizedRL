@@ -1,4 +1,15 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+import numpy as np
+
+
+@dataclass(frozen=True)
+class ModelParameters:
+    aA: np.ndarray
+    aB: np.ndarray
+    b: np.ndarray
+    c: np.ndarray
 
 
 class Model(ABC):
@@ -24,13 +35,13 @@ class Model(ABC):
     def lagrange_gradient(self):
         pass
 
-    def get_params(self):
-        return {
-            "aA": self.aA.copy(),
-            "aB": self.aB.copy(),
-            "b": self.b.copy(),
-            "c": self.c.copy(),
-        }
+    def get_params(self) -> ModelParameters:
+        return ModelParameters(
+            aA=self.aA.copy(),
+            aB=self.aB.copy(),
+            b=self.b.copy(),
+            c=self.c.copy(),
+        )
 
     @abstractmethod
     def update_params(self, grad, lr):
