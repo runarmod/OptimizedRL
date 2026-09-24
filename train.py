@@ -11,6 +11,7 @@ import wandb
 from src.config.config_loader import load_config
 from src.config.config_models import AppConfig
 from src.gym_envs import example_env, portfolio_env
+from src.gym_envs.env_interface import Env
 from src.models import example_model, portfolio_model
 from src.models.model_interface import Model
 from src.solvers import bnb, scip, scip_brute
@@ -114,6 +115,188 @@ def resolve_runtime_device(configured_device):
     return device
 
 
+def build_models(config: AppConfig, project_root: Path) -> tuple[Model, Env]:
+    problem_name = config.problem
+    configured_seed = config.numpy_seed
+    effective_seed = configured_seed
+    portfolio_zero_init_seeds = set(config.portfolio_zero_init_seeds)
+    force_portfolio_zero_init = (
+        problem_name == "portfolio" and configured_seed in portfolio_zero_init_seeds
+    )
+
+    state_size = config.model.state_size
+    action_size = config.model.action_size
+    np.random.seed(effective_seed)
+    num_cons = config.model.n_cons
+    num_pieces = config.model.n_value_func
+    aA = np.random.uniform(0, 0.1, size=(num_pieces, state_size))
+    aB = np.random.uniform(0, 0.1, size=(num_pieces, action_size))
+    b = np.random.uniform(0, 0.1, size=(num_pieces,))
+    c = np.random.uniform(0, 10, size=(action_size,))
+    state = np.random.randint(2, size=state_size)
+
+    C = np.random.uniform(0, 1, size=(num_cons - 2, state_size))
+    C = np.vstack((C, np.zeros((2, state_size))))
+    D = np.random.uniform(0, 1, size=(num_cons, action_size))
+    E = np.random.uniform(5, 15, size=(num_cons - 2))
+    E2 = np.random.uniform(1, 10, size=(2))
+    E = np.hstack((E, E2))
+    action_ub = 10
+
+    bounds = [(0, action_ub) for _ in range(len(c))]
+    integer = [1 for _ in range(len(c))]
+    c_model = -np.random.uniform(0, 10, size=(1,)) * np.ones((action_size,))
+    A = np.random.uniform(0, 0.1, size=(state_size, state_size))
+    B = np.random.uniform(0, 1, size=(state_size, action_size))
+    aA = np.vstack((aA, np.random.uniform(0, 0.1, size=(5, state_size))))
+    aB = np.vstack((aB, np.random.uniform(0, 0.1, size=(5, action_size))))
+    b = np.hstack((b, np.random.uniform(0, 0.1, size=(5,))))
+
+    if force_portfolio_zero_init:
+        n_pieces_total = num_pieces + 5
+        aA = np.zeros((n_pieces_total, state_size))
+        aB = np.zeros((n_pieces_total, action_size))
+        b = np.zeros((n_pieces_total,))
+        C = np.zeros((num_cons, state_size))
+        D = np.zeros((num_cons, action_size))
+        E = np.full((num_cons,), 1e6)
+        c_model = np.zeros((action_size,))
+
+    if config.load:
+        load_path = config.load_path
+        if load_path is None:
+            raise ValueError("Config 'load' is True but 'load_path' is not set.")
+        if not load_path.is_absolute():
+            load_path = project_root / load_path
+        with load_path.open() as params_file:
+            params = yaml.safe_load(params_file)
+        aA = np.array(params["aA"])
+        aB = np.array(params["aB"])
+        c_model = np.array(params["c"])
+        b = np.array(params["b"])
+
+    if problem_name == "example":
+        model = example_model.Arbbin(
+            c_model,
+            C,
+            D,
+            E,
+            aA,
+            aB,
+            b,
+            bounds,
+            integer,
+            config.model.penalty_factor,
+        )
+        environment = example_env.Arb_binary(
+            c,
+            np.zeros_like(state),
+            A,
+            B,
+            C,
+            D,
+            E,
+            config.gym.pf,
+            a_space_size=11,
+            std=config.gym.noise_std,
+        )
+        init_env_seed = 0
+    elif problem_name == "portfolio":
+        portfolio_cfg = config.portfolio_env
+        portfolio_model_cfg = config.portfolio_model
+        model = portfolio_model.PortfolioModel(
+            c_model,
+            C,
+            D,
+            E,
+            aA,
+            aB,
+            b,
+            bounds,
+            integer,
+            config.model.penalty_factor,
+            transaction_cost=portfolio_cfg.transaction_cost,
+            holding_cost=portfolio_cfg.holding_cost,
+            budget_cap=portfolio_cfg.budget_cap,
+            initial_cash=portfolio_cfg.initial_cash,
+            risk_cap=portfolio_cfg.risk_cap,
+            risk_weight=portfolio_cfg.risk_weight,
+            asset_max_position=portfolio_cfg.asset_max_position,
+            action_mode=portfolio_cfg.action_mode,
+            market_mode=portfolio_cfg.market_mode,
+            return_signal_scale=portfolio_cfg.return_signal_scale,
+            lr_mult_aA=portfolio_model_cfg.lr_mult_aA,
+            lr_mult_aB=portfolio_model_cfg.lr_mult_aB,
+            lr_mult_b=portfolio_model_cfg.lr_mult_b,
+            position_dynamics_mode=portfolio_model_cfg.position_dynamics_mode,
+            cvar_mode=portfolio_cfg.cvar_mode,
+            cvar_cap=portfolio_cfg.cvar_cap,
+            cvar_alpha=portfolio_cfg.cvar_alpha,
+            cvar_n_scenarios=portfolio_cfg.cvar_n_scenarios,
+            cvar_obj_weight=portfolio_cfg.cvar_obj_weight,
+            price_levels_mode=portfolio_cfg.price_levels_mode,
+            initial_asset_price=portfolio_cfg.initial_asset_price,
+        )
+        environment = portfolio_env.PortfolioEnv(
+            c,
+            np.zeros_like(state),
+            A,
+            B,
+            C,
+            D,
+            E,
+            config.gym.pf,
+            a_space_size=11,
+            std=config.gym.noise_std,
+            transaction_cost=portfolio_cfg.transaction_cost,
+            holding_cost=portfolio_cfg.holding_cost,
+            budget_cap=portfolio_cfg.budget_cap,
+            initial_cash=portfolio_cfg.initial_cash,
+            cash_interest_rate=portfolio_cfg.cash_interest_rate,
+            risk_cap=portfolio_cfg.risk_cap,
+            risk_weight=portfolio_cfg.risk_weight,
+            asset_max_position=portfolio_cfg.asset_max_position,
+            action_mode=portfolio_cfg.action_mode,
+            reward_mode=portfolio_cfg.reward_mode,
+            inventory_penalty=portfolio_cfg.inventory_penalty,
+            market_mode=portfolio_cfg.market_mode,
+            return_mu=portfolio_cfg.return_mu,
+            return_phi=portfolio_cfg.return_phi,
+            return_sigma=portfolio_cfg.return_sigma,
+            alpha_mode=portfolio_cfg.alpha_mode,
+            alpha_rho=portfolio_cfg.alpha_rho,
+            alpha_sigma=portfolio_cfg.alpha_sigma,
+            alpha_to_return=portfolio_cfg.alpha_to_return,
+            signal_noise_std=portfolio_cfg.signal_noise_std,
+            cvar_n_scenarios=portfolio_cfg.cvar_n_scenarios,
+            cvar_alpha=portfolio_cfg.cvar_alpha,
+            price_levels_mode=portfolio_cfg.price_levels_mode,
+            initial_asset_price=portfolio_cfg.initial_asset_price,
+            min_asset_price=portfolio_cfg.min_asset_price,
+            seed_behavior="modern" if configured_seed >= 5 else "legacy",
+        )
+        init_env_seed = (
+            0
+            if force_portfolio_zero_init
+            else (effective_seed if configured_seed >= 5 else 0)
+        )
+    else:
+        raise ValueError(
+            f"Unsupported problem '{problem_name}'. Expected 'example' or 'portfolio'."
+        )
+
+    initial_state, _ = environment.reset(seed=init_env_seed)
+    model.update_state(initial_state)
+    if hasattr(model, "update_prev_action") and hasattr(environment, "prev_action"):
+        model.update_prev_action(environment.prev_action)
+    if hasattr(model, "update_cash") and hasattr(environment, "cash"):
+        model.update_cash(environment.cash)
+    if hasattr(model, "update_prices") and hasattr(environment, "prices"):
+        model.update_prices(environment.prices)
+
+    return model, environment
+
+
 def _empirical_cvar(losses, alpha):
     losses = np.asarray(losses, dtype=float).flatten()
     if losses.size == 0:
@@ -140,180 +323,20 @@ def main():
     config = load_config(config_path)
     runtime_device = resolve_runtime_device(config.device)
 
-    problem_name = config.problem
-    configured_seed = config.numpy_seed
-    effective_seed = configured_seed
-    portfolio_zero_init_seeds = set(config.portfolio_zero_init_seeds)
-    force_portfolio_zero_init = (
-        problem_name == "portfolio" and configured_seed in portfolio_zero_init_seeds
-    )
-
     diagnostic_window = config.terminal_log_every
 
-    # Init problem
-    state_size = config.model.state_size
+    m, gym_model = build_models(config, project_root)
+    c = gym_model.c
+    A = gym_model.A
+    B = gym_model.B
+    C = m.C
+    D = m.D
+    E = m.E
+    aA = m.aA.copy()
+    aB = m.aB.copy()
+    b = m.b.copy()
     action_size = config.model.action_size
-    np.random.seed(effective_seed)
-    num_cons = config.model.n_cons
-    num_pieces = config.model.n_value_func
-    aA = np.random.uniform(0, 0.1, size=(num_pieces, state_size))
-    aB = np.random.uniform(0, 0.1, size=(num_pieces, action_size))
-    b = np.random.uniform(0, 0.1, size=(num_pieces,))
-    c = np.random.uniform(0, 10, size=(action_size,))
-    state = np.random.randint(2, size=state_size)
-
-    C = np.random.uniform(0, 1, size=(num_cons - 2, state_size))
-    C = np.vstack((C, np.zeros((2, state_size))))
-    D = np.random.uniform(0, 1, size=(num_cons, action_size))
-    E = np.random.uniform(5, 15, size=(num_cons - 2))
-    E2 = np.random.uniform(1, 10, size=(2))
-    E = np.hstack((E, E2))
-    action_ub = 10
-
-    bounds = [(0, action_ub) for _ in range(len(c))]
-    integer = [1 for _ in range(len(c))]
-    c_model = -np.random.uniform(0, 10, size=(1,)) * np.ones((action_size,))
-    A = np.random.uniform(0, 0.1, size=(state_size, state_size))
-    B = np.random.uniform(0, 1, size=(state_size, action_size))
-
-    aA = np.vstack((aA, np.random.uniform(0, 0.1, size=(5, state_size))))
-
-    aB = np.vstack((aB, np.random.uniform(0, 0.1, size=(5, action_size))))
-    # # Init solver and gym model
-    b = np.hstack((b, np.random.uniform(0, 0.1, size=(5,))))
-
-    if force_portfolio_zero_init:
-        # For selected portfolio seeds, use a neutral deterministic LP init.
-        n_pieces_total = num_pieces + 5
-        aA = np.zeros((n_pieces_total, state_size))
-        aB = np.zeros((n_pieces_total, action_size))
-        b = np.zeros((n_pieces_total,))
-        C = np.zeros((num_cons, state_size))
-        D = np.zeros((num_cons, action_size))
-        E = np.full((num_cons,), 1e6)
-        c_model = np.zeros((action_size,))
-
-    load = config.load
-    if load:
-        load_path = config.load_path
-        if load_path is None:
-            raise ValueError("Config 'load' is True but 'load_path' is not set.")
-        if not load_path.is_absolute():
-            load_path = project_root / load_path
-        with load_path.open() as params_file:
-            params = yaml.safe_load(params_file)
-        aA = np.array(params["aA"])
-        aB = np.array(params["aB"])
-        c_model = np.array(params["c"])
-        b = np.array(params["b"])
-
-    if problem_name == "example":
-        model_cls = example_model.Arbbin
-        env_cls = example_env.Arb_binary
-        model_kwargs = {}
-        env_kwargs = {}
-        init_env_seed = 0
-    elif problem_name == "portfolio":
-        model_cls = portfolio_model.PortfolioModel
-        env_cls = portfolio_env.PortfolioEnv
-        portfolio_cfg = config.portfolio_env
-        portfolio_model_cfg = config.portfolio_model
-
-        env_kwargs = {
-            "transaction_cost": portfolio_cfg.transaction_cost,
-            "holding_cost": portfolio_cfg.holding_cost,
-            "budget_cap": portfolio_cfg.budget_cap,
-            "initial_cash": portfolio_cfg.initial_cash,
-            "cash_interest_rate": portfolio_cfg.cash_interest_rate,
-            "risk_cap": portfolio_cfg.risk_cap,
-            "risk_weight": portfolio_cfg.risk_weight,
-            "asset_max_position": portfolio_cfg.asset_max_position,
-            "action_mode": portfolio_cfg.action_mode,
-            "reward_mode": portfolio_cfg.reward_mode,
-            "inventory_penalty": portfolio_cfg.inventory_penalty,
-            "market_mode": portfolio_cfg.market_mode,
-            "return_mu": portfolio_cfg.return_mu,
-            "return_phi": portfolio_cfg.return_phi,
-            "return_sigma": portfolio_cfg.return_sigma,
-            "alpha_mode": portfolio_cfg.alpha_mode,
-            "alpha_rho": portfolio_cfg.alpha_rho,
-            "alpha_sigma": portfolio_cfg.alpha_sigma,
-            "alpha_to_return": portfolio_cfg.alpha_to_return,
-            "signal_noise_std": portfolio_cfg.signal_noise_std,
-            "cvar_n_scenarios": portfolio_cfg.cvar_n_scenarios,
-            "cvar_alpha": portfolio_cfg.cvar_alpha,
-            "price_levels_mode": portfolio_cfg.price_levels_mode,
-            "initial_asset_price": portfolio_cfg.initial_asset_price,
-            "min_asset_price": portfolio_cfg.min_asset_price,
-            "seed_behavior": "modern" if configured_seed >= 5 else "legacy",
-        }
-        model_kwargs = {
-            "transaction_cost": portfolio_cfg.transaction_cost,
-            "holding_cost": portfolio_cfg.holding_cost,
-            "budget_cap": portfolio_cfg.budget_cap,
-            "initial_cash": portfolio_cfg.initial_cash,
-            "risk_cap": portfolio_cfg.risk_cap,
-            "risk_weight": portfolio_cfg.risk_weight,
-            "asset_max_position": portfolio_cfg.asset_max_position,
-            "action_mode": portfolio_cfg.action_mode,
-            "market_mode": portfolio_cfg.market_mode,
-            "return_signal_scale": portfolio_cfg.return_signal_scale,
-            "lr_mult_aA": portfolio_model_cfg.lr_mult_aA,
-            "lr_mult_aB": portfolio_model_cfg.lr_mult_aB,
-            "lr_mult_b": portfolio_model_cfg.lr_mult_b,
-            "position_dynamics_mode": portfolio_model_cfg.position_dynamics_mode,
-            "cvar_mode": portfolio_cfg.cvar_mode,
-            "cvar_cap": portfolio_cfg.cvar_cap,
-            "cvar_alpha": portfolio_cfg.cvar_alpha,
-            "cvar_n_scenarios": portfolio_cfg.cvar_n_scenarios,
-            "cvar_obj_weight": portfolio_cfg.cvar_obj_weight,
-            "price_levels_mode": portfolio_cfg.price_levels_mode,
-            "initial_asset_price": portfolio_cfg.initial_asset_price,
-        }
-        init_env_seed = (
-            0
-            if force_portfolio_zero_init
-            else (effective_seed if configured_seed >= 5 else 0)
-        )
-    else:
-        raise ValueError(
-            f"Unsupported problem '{problem_name}'. Expected 'example' or 'portfolio'."
-        )
-
-    m = model_cls(
-        c_model,
-        C,
-        D,
-        E,
-        aA,
-        aB,
-        b,
-        bounds,
-        integer,
-        config.model.penalty_factor,
-        **model_kwargs,
-    )
-
-    gym_model = env_cls(
-        c,
-        np.zeros_like(state),
-        A,
-        B,
-        C,
-        D,
-        E,
-        config.gym.pf,
-        a_space_size=11,
-        std=config.gym.noise_std,
-        **env_kwargs,
-    )
-    m.update_state(gym_model.reset(seed=init_env_seed)[0])
-    if hasattr(m, "update_prev_action") and hasattr(gym_model, "prev_action"):
-        m.update_prev_action(gym_model.prev_action)
-    if hasattr(m, "update_cash") and hasattr(gym_model, "cash"):
-        m.update_cash(gym_model.cash)
-    if hasattr(m, "update_prices") and hasattr(gym_model, "prices"):
-        m.update_prices(gym_model.prices)
+    state = gym_model.state
 
     os.environ.setdefault("WANDB_SILENT", "true")
     os.environ.setdefault("WANDB_CONSOLE", "off")
