@@ -326,9 +326,9 @@ def main():
     diagnostic_window = config.terminal_log_every
 
     m, gym_model = build_models(config, project_root)
-    original_c = gym_model.c
     original_A = gym_model.A
     original_B = gym_model.B
+    original_c = m.c
     original_C = m.C
     original_D = m.D
     original_E = m.E
