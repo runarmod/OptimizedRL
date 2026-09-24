@@ -14,6 +14,8 @@ import torch
 from torch import nn
 from torch.distributions import Categorical
 
+from src.models.model_interface import Model
+from src.solvers.solver_interface import Solver
 from src.training_algorithm.training_algorithm_interface import (
     AlgorithmDecision,
     AlgorithmTransition,
@@ -159,8 +161,8 @@ class PPOMILPAgent(TrainingAlgorithm):
 
     def __init__(
         self,
-        model,
-        solver,
+        model: Model,
+        solver: Solver,
         state_dim: int,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
@@ -222,24 +224,11 @@ class PPOMILPAgent(TrainingAlgorithm):
         self.value_opt = torch.optim.Adam(self.value_net.parameters(), lr=lr_value)
 
     def _get_model_param_arrays(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        params = None
-        if hasattr(self.model, "get_params"):
-            try:
-                params = self.model.get_params()
-            except AttributeError:
-                params = None
-
-        if isinstance(params, dict) and all(k in params for k in ("aA", "aB", "b")):
-            return (
-                np.asarray(params["aA"], dtype=np.float32),
-                np.asarray(params["aB"], dtype=np.float32),
-                np.asarray(params["b"], dtype=np.float32),
-            )
-
+        params = self.model.get_params()
         return (
-            np.asarray(self.model.aA, dtype=np.float32),
-            np.asarray(self.model.aB, dtype=np.float32),
-            np.asarray(self.model.b, dtype=np.float32),
+            np.asarray(params.aA, dtype=np.float32),
+            np.asarray(params.aB, dtype=np.float32),
+            np.asarray(params.b, dtype=np.float32),
         )
 
     @staticmethod
