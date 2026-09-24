@@ -2,6 +2,13 @@ from abc import ABC, abstractmethod
 
 
 class Model(ABC):
+    def __init__(self):
+        self.s_t = None
+        self.aA = None
+        self.aB = None
+        self.b = None
+        self.c = None
+
     def _update_state(self, state):
         self.s_t = state
 
@@ -17,9 +24,13 @@ class Model(ABC):
     def lagrange_gradient(self):
         pass
 
-    @abstractmethod
     def get_params(self):
-        pass
+        return {
+            "aA": self.aA.copy(),
+            "aB": self.aB.copy(),
+            "b": self.b.copy(),
+            "c": self.c.copy(),
+        }
 
     @abstractmethod
     def update_params(self, grad, lr):
