@@ -270,6 +270,7 @@ def build_models(config: AppConfig, project_root: Path) -> tuple[Model, Env]:
             signal_noise_std=portfolio_cfg.signal_noise_std,
             cvar_n_scenarios=portfolio_cfg.cvar_n_scenarios,
             cvar_alpha=portfolio_cfg.cvar_alpha,
+            cvar_mode=portfolio_cfg.cvar_mode,
             price_levels_mode=portfolio_cfg.price_levels_mode,
             initial_asset_price=portfolio_cfg.initial_asset_price,
             min_asset_price=portfolio_cfg.min_asset_price,
@@ -285,35 +286,17 @@ def build_models(config: AppConfig, project_root: Path) -> tuple[Model, Env]:
             f"Unsupported problem '{problem_name}'. Expected 'example' or 'portfolio'."
         )
 
-    initial_state, _ = environment.reset(seed=init_env_seed)
-    model.update_state(initial_state)
-    if hasattr(model, "update_prev_action") and hasattr(environment, "prev_action"):
-        model.update_prev_action(environment.prev_action)
-    if hasattr(model, "update_cash") and hasattr(environment, "cash"):
-        model.update_cash(environment.cash)
-    if hasattr(model, "update_prices") and hasattr(environment, "prices"):
-        model.update_prices(environment.prices)
+    environment.reset(seed=init_env_seed)
+    model.update_from_environment(environment)
 
     return model, environment
-
-
-def _empirical_cvar(losses, alpha):
-    losses = np.asarray(losses, dtype=float).flatten()
-    if losses.size == 0:
-        return 0.0
-    alpha = float(np.clip(alpha, 0.0, 0.999999))
-    tail_count = max(1, int(np.ceil((1.0 - alpha) * losses.size)))
-    sorted_losses = np.sort(losses)
-    tail_losses = sorted_losses[-tail_count:]
-    return float(np.mean(tail_losses))
 
 
 def sanitize_env_action(env, action):
     action_arr = np.asarray(action, dtype=np.float32).reshape(-1)
     action_arr = np.round(action_arr).astype(np.int32)
-    if hasattr(env.action_space, "nvec"):
-        nvec = env.action_space.nvec.astype(np.int32)
-        action_arr = np.clip(action_arr, 0, nvec - 1)
+    nvec = env.action_space.nvec.astype(np.int32)
+    action_arr = np.clip(action_arr, 0, nvec - 1)
     return action_arr
 
 
@@ -325,18 +308,17 @@ def main():
 
     diagnostic_window = config.terminal_log_every
 
-    m, gym_model = build_models(config, project_root)
-    original_A = gym_model.A
-    original_B = gym_model.B
-    original_c = m.c
-    original_C = m.C
-    original_D = m.D
-    original_E = m.E
-    original_aA = m.aA.copy()
-    original_aB = m.aB.copy()
-    original_b = m.b.copy()
-    action_size = config.model.action_size
-    state = gym_model.state
+    model, env = build_models(config, project_root)
+    original_A = env.A
+    original_B = env.B
+    original_c = model.c
+    original_C = model.C
+    original_D = model.D
+    original_E = model.E
+    original_aA = model.aA.copy()
+    original_aB = model.aB.copy()
+    original_b = model.b.copy()
+    state = env.state
 
     os.environ.setdefault("WANDB_SILENT", "true")
     os.environ.setdefault("WANDB_CONSOLE", "off")
@@ -352,12 +334,12 @@ def main():
     training_algorithm = build_training_algorithm(
         algorithm,
         config,
-        m,
+        model,
         solver,
         runtime_device,
     )
 
-    state = gym_model.state
+    state = env.state
 
     rollout_iters = training_algorithm.rollout_iters
     total_iters = config.total_iters
@@ -416,17 +398,10 @@ def main():
             last_calced += 1
             diagnostics["step_count"] += 1
 
-            if hasattr(m, "update_prev_action") and hasattr(gym_model, "prev_action"):
-                m.update_prev_action(gym_model.prev_action)
-            if hasattr(m, "update_cash") and hasattr(gym_model, "cash"):
-                m.update_cash(gym_model.cash)
-            if hasattr(m, "update_prices") and hasattr(gym_model, "prices"):
-                m.update_prices(gym_model.prices)
-            if hasattr(m, "update_scenarios") and hasattr(gym_model, "return_window"):
-                m.update_scenarios(gym_model.return_window)
+            model.update_from_environment(env)
 
             decision = training_algorithm.act(state)
-            action = sanitize_env_action(gym_model, decision.action)
+            action = sanitize_env_action(env, decision.action)
             act_info = decision.info
             store = decision.store
             chosen_action_raw = decision.raw_action
@@ -451,32 +426,14 @@ def main():
                     ]
 
             old_state_for_buffer = np.asarray(state).copy()
-            state, reward, terminated, _, info = gym_model.step(action)
+            state, reward, terminated, _, info = env.step(action)
             action_number = info["action"]
             old_state = info["old_state"]
             new_state = info["new_state"]
             turnover = float(info.get("turnover", 0.0))
             risk_utilization = float(info.get("risk_utilization", 0.0))
             economic_reward = float(info.get("economic_reward", -reward))
-            empirical_cvar = 0.0
-            scenario_matrix = info.get("scenario_matrix", None)
-            target_position = np.asarray(
-                info.get("target_position", np.zeros((action_size,))), dtype=float
-            )
-            if (
-                scenario_matrix is not None
-                and hasattr(m, "cvar_mode")
-                and m.cvar_mode == "on"
-            ):
-                scenario_matrix = np.asarray(scenario_matrix, dtype=float)
-                if (
-                    scenario_matrix.ndim == 2
-                    and scenario_matrix.shape[1] == target_position.shape[0]
-                ):
-                    scenario_losses = -(scenario_matrix @ target_position)
-                    empirical_cvar = _empirical_cvar(
-                        scenario_losses, getattr(m, "cvar_alpha", 0.95)
-                    )
+            empirical_cvar = float(info.get("empirical_cvar", 0.0))
 
             diagnostics["turnover_sum"] += turnover
             diagnostics["risk_utilization_sum"] += risk_utilization
@@ -549,15 +506,8 @@ def main():
                 economic_ep_reward = 0
                 fathomed_counter = 0
                 ep_length = 0
-                state, _ = gym_model.reset()
-                if hasattr(m, "update_prev_action") and hasattr(
-                    gym_model, "prev_action"
-                ):
-                    m.update_prev_action(gym_model.prev_action)
-                if hasattr(m, "update_cash") and hasattr(gym_model, "cash"):
-                    m.update_cash(gym_model.cash)
-                if hasattr(m, "update_prices") and hasattr(gym_model, "prices"):
-                    m.update_prices(gym_model.prices)
+                state, _ = env.reset()
+                model.update_from_environment(env)
                 if last_calced > comp_expected_every and comp_expected:
                     expected_ep_reward = calc_expected_reward(
                         -original_c,
@@ -576,7 +526,7 @@ def main():
         pol_grad_norm = update_result["pol_grad_norm"]
         algorithm_metrics = update_result["metrics"]
 
-        model_params = m.get_params()
+        model_params = model.get_params()
         c = model_params["c"]
         aA = model_params["aA"]
         aB = model_params["aB"]

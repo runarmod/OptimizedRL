@@ -24,8 +24,8 @@ class Arbbin(Model):  # Fix D
     def get_desc_var_indices(self):
         return slice(self.n_desc_vars)
 
-    def update_state(self, s_t):
-        self.s_t = s_t
+    def update_from_environment(self, environment):
+        self._update_state(environment.state)
 
     def get_LP_formulation(self):
         c = np.hstack((self.c, 1, self.pf))

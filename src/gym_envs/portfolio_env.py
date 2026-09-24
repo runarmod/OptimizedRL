@@ -38,6 +38,7 @@ class PortfolioEnv(gym.Env):
         inventory_penalty=0.0,
         cvar_n_scenarios=20,
         cvar_alpha=0.95,
+        cvar_mode="off",
         price_levels_mode="off",
         initial_asset_price=100.0,
         min_asset_price=1.0,
@@ -94,6 +95,9 @@ class PortfolioEnv(gym.Env):
         self.inventory_penalty = float(inventory_penalty)
         self.cvar_n_scenarios = int(cvar_n_scenarios)
         self.cvar_alpha = float(cvar_alpha)
+        self.cvar_mode = str(cvar_mode)
+        if self.cvar_mode not in ("off", "on"):
+            raise ValueError("cvar_mode must be 'off' or 'on'")
         self.price_levels_mode = str(price_levels_mode)
         if self.price_levels_mode not in ("off", "on"):
             raise ValueError("price_levels_mode must be 'off' or 'on'")
@@ -307,6 +311,13 @@ class PortfolioEnv(gym.Env):
         if terminated:
             nxt_state = np.array([np.nan] * len(self.state))
 
+        empirical_cvar = 0.0
+        if self.cvar_mode == "on":
+            scenario_losses = -(self.return_window @ effective_position)
+            alpha = float(np.clip(self.cvar_alpha, 0.0, 0.999999))
+            tail_count = max(1, int(np.ceil((1.0 - alpha) * scenario_losses.size)))
+            empirical_cvar = float(np.mean(np.sort(scenario_losses)[-tail_count:]))
+
         info = {
             "action": action_index,
             "old_state": old_state,
@@ -343,6 +354,7 @@ class PortfolioEnv(gym.Env):
             "wealth_before": wealth_before,
             "wealth_after": wealth_after,
             "economic_reward": economic_reward,
+            "empirical_cvar": empirical_cvar,
             "base_reward": float(base_reward),
             "inventory_penalty": float(inventory_penalty_value),
             "self_financing_residual": float(self_financing_residual),

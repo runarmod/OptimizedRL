@@ -2,8 +2,11 @@ from abc import ABC, abstractmethod
 
 
 class Model(ABC):
+    def _update_state(self, state):
+        self.s_t = state
+
     @abstractmethod
-    def update_state(self):
+    def update_from_environment(self, environment):
         pass
 
     @abstractmethod
