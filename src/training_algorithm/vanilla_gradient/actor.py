@@ -81,7 +81,6 @@ class Actor:
 
     def act(self, new_state):
         # Compute next action
-        self.model.update_state(new_state)
         node = self.model.get_LP_formulation()
 
         sol_pool = self.solver.solve(

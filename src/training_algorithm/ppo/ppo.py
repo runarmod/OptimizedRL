@@ -336,7 +336,6 @@ class PPOMILPAgent(TrainingAlgorithm):
     def act(self, state: np.ndarray) -> AlgorithmDecision:
         """Select an action from the existing MILP problem node via the solver pool."""
         self._sync_model_params_from_theta()
-        self.model.update_state(state)
         node = self.model.get_LP_formulation()
         sol_pool = self.solver.solve(node)
         if not sol_pool:

@@ -94,8 +94,12 @@ class PortfolioModel(Model):
     def get_desc_var_indices(self):
         return slice(self.n_desc_vars)
 
-    def update_state(self, s_t):
-        self.s_t = s_t
+    def update_from_environment(self, environment):
+        self._update_state(environment.state)
+        self.update_prev_action(environment.prev_action)
+        self.update_cash(environment.cash)
+        self.update_prices(environment.prices)
+        self.update_scenarios(environment.return_window)
 
     def update_prev_action(self, prev_action):
         self.prev_action = np.asarray(prev_action, dtype=float).flatten()
