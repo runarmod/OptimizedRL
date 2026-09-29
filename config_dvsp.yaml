@@ -1,0 +1,89 @@
+# CORL on the Dynamic Vehicle Scheduling Problem (paper 02, Hoppe et al. 2025).
+# Run with: uv run python train.py --config config_dvsp.yaml
+name: "dvsp corl ppo"
+
+wandb_mode: "online"
+
+problem: "dvsp"
+
+numpy_seed: 0
+load: False
+load_path: null
+
+device: "cpu"
+
+training:
+  algorithm: "ppo"
+  # enumeration: best-first branching on dispatch decisions (see
+  # src/solvers/enumeration.py). scip: the generic SCIP B&B pool, which
+  # collapses to the root on this problem because its LP is integral.
+  solver: "enumeration"
+
+enumeration:
+  max_pool_size: 16
+  max_depth: 1
+  integral_only: true
+
+scip:
+  verbose: false
+
+dvsp:
+  instance_dir: "../euro-neurips-vrp-2022-quickstart/instances"
+  split_seed: 0
+  split_fractions: [0.34, 0.34]
+  # Paper 02 uses the first 10 instances of each split.
+  nb_train_instances: 10
+  nb_val_instances: 10
+  nb_test_instances: 10
+  # Optional explicit instance names (file stems) to reproduce a given split.
+  train_instances: null
+  val_instances: null
+  test_instances: null
+  max_requests_per_epoch: 10
+  # fixed = paper 02 (is_deterministic=true): each instance replays one stream.
+  scenario_mode: "fixed"
+  scenario_seed: 0
+  # false = paper 02's RL evaluation loop (stops before the last epoch).
+  # Its greedy/expert baselines serve the last epoch (true). See
+  # scripts/dvsp_baselines.py for both.
+  serve_final_epoch: false
+  init: "glorot"
+  eval_every: 5
+  save_best: true
+
+plotting:
+  window_size: 10
+
+ppo:
+  # The DVSP environment returns reward = -route duration, so maximise it.
+  minimize_env_reward: False
+  normalize_rewards: True
+  reward_norm_eps: 1.0e-8
+  reward_clip: null
+  gamma: 1.0
+  gae_lambda: 0.95
+  clip_param: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  actor_lr: 0.001
+  critic_lr: 0.01
+  policy_beta: 1
+  normalize_obj_values: true
+  obj_norm_eps: 1.0e-8
+  opt_epochs: 10
+  mini_batch_size: 32
+  # ~10 episodes per rollout; episodes continue across rollouts.
+  rollout_iters: 70
+  target_kl: 0.01
+  normalize_adv: True
+  # Unused with integral candidates (no pruned nodes to sample from).
+  nn_sample: False
+
+reset_env_each_rollout: false
+
+total_iters: 400
+
+explicit_sol_time: 4
+comp_expected: False
+comp_expected_every: 100
+terminal_log_every: 100

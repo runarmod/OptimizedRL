@@ -152,7 +152,7 @@ class PPOMILPAgent(TrainingAlgorithm):
     """PPO agent for MILP candidate-set action selection.
 
     Policy parameterization:
-    - Learned MILP parameters theta = (aA, aB, b).
+    - Learned MILP parameters theta = model.get_policy_params(), e.g. (aA, aB, b).
     - Action probabilities use a fixed-temperature softmax over objective values.
     - PPO updates use a first-order linearization of objective values around theta_old.
 
@@ -213,8 +213,7 @@ class PPOMILPAgent(TrainingAlgorithm):
         self.buffer = PPOBuffer()
         self.recent_samples = []
 
-        aA0, aB0, b0 = self._get_model_param_arrays()
-        theta0 = self._flatten_theta(aA0, aB0, b0)
+        theta0 = np.asarray(self.model.get_policy_params(), dtype=np.float32)
         self.theta_dim = int(theta0.size)
         self.theta = nn.Parameter(
             torch.as_tensor(theta0, dtype=torch.float32, device=self.device)
@@ -223,43 +222,9 @@ class PPOMILPAgent(TrainingAlgorithm):
         self.policy_opt = torch.optim.Adam([self.theta], lr=lr_policy)
         self.value_opt = torch.optim.Adam(self.value_net.parameters(), lr=lr_value)
 
-    def _get_model_param_arrays(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        params = self.model.get_params()
-        return (
-            np.asarray(params.aA, dtype=np.float32),
-            np.asarray(params.aB, dtype=np.float32),
-            np.asarray(params.b, dtype=np.float32),
-        )
-
-    @staticmethod
-    def _flatten_theta(aA: np.ndarray, aB: np.ndarray, b: np.ndarray) -> np.ndarray:
-        return np.concatenate(
-            [
-                np.asarray(aA, dtype=np.float32).reshape(-1),
-                np.asarray(aB, dtype=np.float32).reshape(-1),
-                np.asarray(b, dtype=np.float32).reshape(-1),
-            ]
-        )
-
-    def _theta_to_model(self, theta_vec: np.ndarray) -> None:
-        aA_shape = self.model.aA.shape
-        aB_shape = self.model.aB.shape
-        b_shape = self.model.b.shape
-
-        idx = 0
-        aA_size = int(np.prod(aA_shape))
-        aB_size = int(np.prod(aB_shape))
-        b_size = int(np.prod(b_shape))
-
-        self.model.aA = theta_vec[idx : idx + aA_size].reshape(aA_shape).astype(float)
-        idx += aA_size
-        self.model.aB = theta_vec[idx : idx + aB_size].reshape(aB_shape).astype(float)
-        idx += aB_size
-        self.model.b = theta_vec[idx : idx + b_size].reshape(b_shape).astype(float)
-
     def _sync_model_params_from_theta(self) -> None:
         theta_np = self.theta.detach().cpu().numpy().astype(np.float32)
-        self._theta_to_model(theta_np)
+        self.model.set_policy_params(theta_np)
 
     def to(self, device):
         self.device = torch.device(device)
@@ -328,8 +293,11 @@ class PPOMILPAgent(TrainingAlgorithm):
         node = self.model.get_LP_formulation()
         sol_pool = self.solver.solve(node)
         if not sol_pool:
+            n_vars = len(node["c"])
             return AlgorithmDecision(
-                action=np.zeros(len(self.model.get_desc_var_indices()), dtype=np.int32),
+                action=np.zeros(n_vars, dtype=np.int32)[
+                    self.model.get_desc_var_indices()
+                ],
                 info={"n_sols": 0},
                 store=False,
             )

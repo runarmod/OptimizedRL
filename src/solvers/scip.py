@@ -525,6 +525,23 @@ class SCIPSolver:
         bounds = init_node["bounds"]
         integer = init_node["integer"]
         n_vars = len(c)
+        if n_vars == 0:
+            # Nothing to decide (e.g. a DVSP epoch without open requests).
+            return [
+                {
+                    "fun": 0.0,
+                    "x": np.zeros(0),
+                    "eqlin": np.zeros(0),
+                    "ineqlin": np.zeros(0),
+                    "lower": np.zeros(0),
+                    "upper": np.zeros(0),
+                    "fathomed": False,
+                    "conds": [],
+                    "node": init_node,
+                    "bounds": bounds,
+                    "status": "empty",
+                }
+            ]
 
         model = Model("MILP")
         try:
