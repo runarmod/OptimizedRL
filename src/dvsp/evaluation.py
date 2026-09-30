@@ -122,8 +122,9 @@ def resolve_split_files(
 ) -> dict[str, list[Path]]:
     """Pick the instance files of each split.
 
-    Explicit names win; otherwise the first ``counts[split]`` files of a
-    seeded shuffle-split are used (paper 02 uses 10 per split).
+    The first ``counts[split]`` explicit names are used when given; otherwise
+    the first ``counts[split]`` files of a seeded shuffle-split (paper 02 uses
+    10 per split).
     """
     files = list_instance_files(instance_dir)
     if not files:
@@ -136,6 +137,7 @@ def resolve_split_files(
     for split, count in counts.items():
         names = explicit.get(split)
         if names:
+            names = names[:count]
             missing = [n for n in names if Path(n).stem not in by_name]
             if missing:
                 raise FileNotFoundError(f"{split} instances not found: {missing}")

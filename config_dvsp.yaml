@@ -28,17 +28,50 @@ scip:
   verbose: false
 
 dvsp:
-  instance_dir: "../euro-neurips-vrp-2022-quickstart/instances"
+  # The 30 instances below are included in the repo (see its README).
+  instance_dir: "data/euro_neurips_2022"
+  # split_seed/split_fractions only apply when the lists below are null (then
+  # instance_dir must hold all 250 competition instances).
   split_seed: 0
   split_fractions: [0.34, 0.34]
-  # Paper 02 uses the first 10 instances of each split.
+  # Paper 02 uses 10 instances per split; the first N of each list are used.
   nb_train_instances: 10
   nb_val_instances: 10
   nb_test_instances: 10
-  # Optional explicit instance names (file stems) to reproduce a given split.
-  train_instances: null
-  val_instances: null
-  test_instances: null
+  # The seed-0 split of all 250 competition instances.
+  train_instances:
+    - ORTEC-VRPTW-ASYM-00c5356f-d1-n258-k12
+    - ORTEC-VRPTW-ASYM-08d8e660-d1-n460-k42
+    - ORTEC-VRPTW-ASYM-0bdff870-d1-n458-k35
+    - ORTEC-VRPTW-ASYM-152bab99-d1-n215-k20
+    - ORTEC-VRPTW-ASYM-1a452a2c-d1-n391-k23
+    - ORTEC-VRPTW-ASYM-1de83915-d1-n262-k15
+    - ORTEC-VRPTW-ASYM-2cbc6e34-d1-n454-k35
+    - ORTEC-VRPTW-ASYM-36b75313-d1-n225-k15
+    - ORTEC-VRPTW-ASYM-3709cf41-d1-n287-k19
+    - ORTEC-VRPTW-ASYM-38e65f4b-d1-n443-k35
+  val_instances:
+    - ORTEC-VRPTW-ASYM-01829532-d1-n324-k22
+    - ORTEC-VRPTW-ASYM-02182cf8-d1-n327-k20
+    - ORTEC-VRPTW-ASYM-0797afaf-d1-n313-k20
+    - ORTEC-VRPTW-ASYM-11527044-d1-n470-k27
+    - ORTEC-VRPTW-ASYM-13db18b2-d1-n310-k20
+    - ORTEC-VRPTW-ASYM-16b82253-d1-n457-k30
+    - ORTEC-VRPTW-ASYM-1bdf25a7-d1-n531-k43
+    - ORTEC-VRPTW-ASYM-1cd538a9-d1-n400-k25
+    - ORTEC-VRPTW-ASYM-1f1fffc4-d1-n332-k25
+    - ORTEC-VRPTW-ASYM-21e8376e-d1-n507-k30
+  test_instances:
+    - ORTEC-VRPTW-ASYM-04c694cd-d1-n254-k18
+    - ORTEC-VRPTW-ASYM-0dc59ef2-d1-n213-k25
+    - ORTEC-VRPTW-ASYM-19eafe1e-d1-n458-k35
+    - ORTEC-VRPTW-ASYM-1bc16246-d1-n503-k43
+    - ORTEC-VRPTW-ASYM-27e27157-d1-n350-k22
+    - ORTEC-VRPTW-ASYM-2c4cceaa-d1-n470-k35
+    - ORTEC-VRPTW-ASYM-2d8735ce-d1-n270-k18
+    - ORTEC-VRPTW-ASYM-30d4e457-d1-n290-k20
+    - ORTEC-VRPTW-ASYM-31d5cfe6-d1-n252-k30
+    - ORTEC-VRPTW-ASYM-33202ac2-d1-n259-k25
   max_requests_per_epoch: 10
   # fixed = paper 02 (is_deterministic=true): each instance replays one stream.
   scenario_mode: "fixed"

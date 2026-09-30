@@ -18,9 +18,9 @@ algorithms, example 2 and PPO algorithm.
 
 A port of the DVSP from "Structured Reinforcement Learning for Combinatorial
 Decision-Making" (Hoppe et al., NeurIPS 2025), so CORL can be compared with
-its SIL/PPO/SRL results. It needs the instances of the
-[EURO-NeurIPS 2022 quickstart](https://github.com/ortec/euro-neurips-vrp-2022-quickstart)
-repository, expected next to this one (see `dvsp.instance_dir`).
+its SIL/PPO/SRL results. The 30 instances it uses (from the
+[EURO-NeurIPS 2022 quickstart](https://github.com/ortec/euro-neurips-vrp-2022-quickstart))
+are included in `data/euro_neurips_2022/`, so the repo is self-contained.
 
 - `src/dvsp/`: instance parsing, simulator, features, prize-collecting LP,
   anticipative expert and evaluation, ported from DynamicVehicleRouting.jl
@@ -39,6 +39,21 @@ uv run python scripts/dvsp_baselines.py          # greedy, lazy, expert
 uv run python train.py --config config_dvsp.yaml # train CORL-PPO
 uv run python scripts/dvsp_baselines.py --params params/dvsp_<name>_best.yaml
 ```
+
+### Running the 10 seeds on a server
+
+Needs [uv](https://docs.astral.sh/uv/) (it installs Python 3.14 and the
+dependencies) and, for the default `wandb_mode: online`, `uv run wandb login`.
+
+```bash
+git clone -b dvsp-environment git@github.com:runarmod/OptimizedRL.git
+cd OptimizedRL
+scripts/train_dvsp_seeds.sh        # seeds 0-9, all in parallel (~20 min)
+scripts/train_dvsp_seeds.sh -j 5   # at most 5 at a time (each ~1 core, 0.5 GB)
+```
+
+Weights are saved to `params/dvsp_dvsp_corl_ppo_seed_<k>_best.yaml`, logs to
+`logs/dvsp_seed<k>.out`.
 
 Paper 02's RL evaluation stops before the final epoch, while its greedy and
 expert baselines also dispatch it; `dvsp.serve_final_epoch` selects the
