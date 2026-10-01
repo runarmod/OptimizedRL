@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictConfig(BaseModel):
@@ -45,7 +45,7 @@ class TrainingConfig(StrictConfig):
     algorithm: Literal["vanilla_gradient", "ppo"] = Field(
         description="Training algorithm."
     )
-    solver: Literal["scip", "scip_brute", "bnb"] = Field(
+    solver: Literal["scip", "scip_brute", "bnb", "enumeration"] = Field(
         description="MILP solver implementation."
     )
 
@@ -167,6 +167,18 @@ class PortfolioEnvConfig(StrictConfig):
     min_asset_price: float = Field(gt=0, description="Minimum asset price.")
 
 
+class EnumerationConfig(StrictConfig):
+    max_pool_size: int = Field(
+        gt=0, description="Maximum number of candidates in the policy pool."
+    )
+    max_depth: int = Field(
+        ge=0, description="Maximum number of branching fixings from the root."
+    )
+    integral_only: bool = Field(
+        description="Drop fractional candidates instead of returning pruned nodes."
+    )
+
+
 class PpoConfig(StrictConfig):
     nn_sample: bool = Field(
         description="PPO override for fractional-solution sampling."
@@ -232,22 +244,28 @@ class AppConfig(StrictConfig):
         description="Optimization problem implementation."
     )
     portfolio_zero_init_seeds: list[int] = Field(
-        description="Portfolio seeds that use deterministic zero initialization."
+        default_factory=list,
+        description="Portfolio seeds that use deterministic zero initialization.",
     )
     numpy_seed: int = Field(description="Random seed for NumPy and environment setup.")
     load: bool = Field(description="Load model parameters from load_path.")
     load_path: Path | None = Field(None, description="Path to saved model parameters.")
     device: str = Field(description="Requested Torch device, such as cpu or cuda.")
-    scip: ScipConfig
-    scip_brute: ScipBruteConfig
+    scip: ScipConfig | None = None
+    scip_brute: ScipBruteConfig | None = None
+    enumeration: EnumerationConfig | None = None
     training: TrainingConfig
-    model: ModelConfig
-    gym: GymConfig
+    model: ModelConfig | None = None
+    gym: GymConfig | None = None
     plotting: PlottingConfig
-    portfolio_model: PortfolioModelConfig
-    portfolio_env: PortfolioEnvConfig
+    portfolio_model: PortfolioModelConfig | None = None
+    portfolio_env: PortfolioEnvConfig | None = None
     ppo: PpoConfig
-    vanilla_gradient: VanillaGradientConfig
+    vanilla_gradient: VanillaGradientConfig | None = None
+    reset_env_each_rollout: bool = Field(
+        True,
+        description="Reset the environment at the end of every rollout.",
+    )
     total_iters: int = Field(gt=0, description="Total outer training iterations.")
     explicit_sol_time: int = Field(
         gt=0, description="Time horizon used by expected-reward evaluation."
@@ -261,3 +279,27 @@ class AppConfig(StrictConfig):
     terminal_log_every: int = Field(
         gt=0, description="Window size for rolling terminal diagnostics."
     )
+
+    @model_validator(mode="after")
+    def _check_sections(self) -> "AppConfig":
+        required = {
+            "example": ["model", "gym"],
+            "portfolio": ["model", "gym", "portfolio_model", "portfolio_env"],
+        }[self.problem]
+        solver_section = {
+            "scip": "scip",
+            "scip_brute": "scip_brute",
+            "enumeration": "enumeration",
+        }.get(self.training.solver)
+        if solver_section is not None:
+            required.append(solver_section)
+        if self.training.algorithm == "vanilla_gradient":
+            required.append("vanilla_gradient")
+        missing = [name for name in required if getattr(self, name) is None]
+        if missing:
+            raise ValueError(
+                f"Config sections {missing} are required for problem "
+                f"'{self.problem}' with solver '{self.training.solver}' and "
+                f"algorithm '{self.training.algorithm}'."
+            )
+        return self

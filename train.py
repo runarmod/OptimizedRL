@@ -1,3 +1,5 @@
+import argparse
+import re
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +13,7 @@ from src.gym_envs import example_env, portfolio_env
 from src.gym_envs.env_interface import Env
 from src.models import example_model, portfolio_model
 from src.models.model_interface import Model
-from src.solvers import bnb, scip, scip_brute
+from src.solvers import bnb, enumeration, scip, scip_brute
 from src.solvers.solver_interface import Solver
 from src.training_algorithm.ppo.ppo import PPO_MILP_Agent
 from src.training_algorithm.training_algorithm_interface import (
@@ -31,6 +33,7 @@ def build_training_algorithm(
     model: Model,
     solver: Solver,
     runtime_device: str,
+    state_dim: int,
 ) -> TrainingAlgorithm:
 
     match algorithm:
@@ -47,7 +50,7 @@ def build_training_algorithm(
             return PPO_MILP_Agent(
                 model=model,
                 solver=solver,
-                state_dim=config.model.state_size,
+                state_dim=state_dim,
                 gamma=ppo_cfg.gamma,
                 gae_lambda=ppo_cfg.gae_lambda,
                 clip_param=ppo_cfg.clip_param,
@@ -101,9 +104,16 @@ def build_solver(config: AppConfig):
                 prefer_depth_first=config.scip_brute.prefer_depth_first,
             )
 
+        case "enumeration":
+            return enumeration.BranchEnumerationSolver(
+                max_pool_size=config.enumeration.max_pool_size,
+                max_depth=config.enumeration.max_depth,
+                integral_only=config.enumeration.integral_only,
+            )
+
     raise ValueError(
-        "training.solver must be one of 'scip', 'scip_brute', or 'bnb'. "
-        f"Got '{config.training.solver}'."
+        "training.solver must be one of 'scip', 'scip_brute', 'bnb' or "
+        f"'enumeration'. Got '{config.training.solver}'."
     )
 
 
@@ -112,6 +122,21 @@ def resolve_runtime_device(configured_device):
     if device.startswith("cuda") and not torch.cuda.is_available():
         return "cpu"
     return device
+
+
+def resolve_path(path: Path, project_root: Path) -> Path:
+    return path if path.is_absolute() else project_root / path
+
+
+def save_best_params(
+    config: AppConfig, project_root: Path, theta: np.ndarray, info: dict
+) -> Path:
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", config.name)
+    path = project_root / "params" / f"{config.problem}_{safe_name}_best.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as params_file:
+        yaml.safe_dump({"theta": np.asarray(theta).tolist(), **info}, params_file)
+    return path
 
 
 def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, Env]:
@@ -292,6 +317,8 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
 
 
 def sanitize_env_action(env, action):
+    if hasattr(env, "sanitize_action"):
+        return env.sanitize_action(action)
     action_arr = np.asarray(action, dtype=np.float32).reshape(-1)
     action_arr = np.round(action_arr).astype(np.int32)
     nvec = env.action_space.nvec.astype(np.int32)
@@ -299,18 +326,32 @@ def sanitize_env_action(env, action):
     return action_arr
 
 
+def parse_args(project_root: Path) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train a CORL MILP policy.")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=project_root / "config.yaml",
+        help="Path to the YAML config (default: config.yaml).",
+    )
+    return parser.parse_args()
+
+
 def main():
     project_root = Path(__file__).resolve().parent
-    config_path = project_root / "config.yaml"
-    config = load_config(config_path)
+    args = parse_args(project_root)
+    config = load_config(resolve_path(args.config, Path.cwd()))
     runtime_device = resolve_runtime_device(config.device)
 
+    validation = None
+    eval_every = 0
     model, env = build_model_and_env(config, project_root)
-    original_A = env.A
-    original_B = env.B
-    original_C = model.C
-    original_D = model.D
-    original_E = model.E
+    if config.comp_expected:
+        original_A = env.A
+        original_B = env.B
+        original_C = model.C
+        original_D = model.D
+        original_E = model.E
     original_model_params = model.get_params()
     state = env.state
 
@@ -323,6 +364,7 @@ def main():
         model,
         solver,
         runtime_device,
+        state_dim=int(np.asarray(env.state).reshape(-1).size),
     )
 
     state = env.state
@@ -337,7 +379,21 @@ def main():
 
     expected_ep_reward = None
     last_calced = 0
-    for _ in tqdm(range(total_iters), desc="Total Iterations"):
+    for iteration in tqdm(range(total_iters), desc="Total Iterations"):
+        if validation is not None and iteration % eval_every == 0:
+            eval_metrics = validation.evaluate(model.get_policy_params())
+            eval_metrics[f"{config.problem}/iteration"] = iteration
+            plotter.log_evaluation(eval_metrics)
+            problem_config = getattr(config, config.problem, None)
+            save_best = getattr(problem_config, "save_best", False)
+            if validation.is_new_best(eval_metrics) and save_best:
+                save_best_params(
+                    config,
+                    project_root,
+                    model.get_policy_params(),
+                    {"iteration": iteration, **eval_metrics},
+                )
+
         if last_calced > comp_expected_every and comp_expected:
             expected_ep_reward = calc_expected_reward(
                 -original_model_params.c,
@@ -386,7 +442,9 @@ def main():
                     act_info,
                 )
 
-            episode_done = terminated or i == rollout_iters - 1
+            episode_done = terminated or (
+                config.reset_env_each_rollout and i == rollout_iters - 1
+            )
             plotter.log_step(
                 reward=float(reward),
                 action=action_number,
