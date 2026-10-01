@@ -1,0 +1,80 @@
+# CORL on the Dynamic Assortment Problem (paper 02, Hoppe et al. 2025).
+# Main method: 2 value pieces, explicit B&B tree, NNS-3 at fractional nodes.
+# Ablations: config_dap_exact.yaml (exact softmax over all assortments) and
+# config_dap_linear.yaml (no value pieces = paper 02's linear top-k actor).
+# Run with: uv run python train.py --config config_dap.yaml
+name: "dap corl bnb"
+
+wandb_mode: "online"
+
+problem: "dap"
+
+numpy_seed: 0
+load: False
+load_path: null
+
+device: "cpu"
+
+training:
+  algorithm: "ppo"
+  # enumeration = B&B tree built explicitly by branching on the item
+  # variables. SCIP's tree mostly stops at the root on this MILP (the root LP
+  # is integral in ~90% of states) and its node tracking drops the rest.
+  solver: "enumeration"
+
+enumeration:
+  max_pool_size: 16
+  # Depth 1 already fills the pool (16 nodes) at 1/9 of depth 2's cost.
+  max_depth: 1
+  # Keep fractional nodes as pruned candidates; they are completed by NNS-k.
+  integral_only: false
+
+dap:
+  n_value_pieces: 2
+  k: 4
+  train_seeds: [1, 100]
+  seed_order: "cycle"
+  # Paper 02 starts from models earning 100-200 on episodes 1-10.
+  init_reward_range: [100.0, 200.0]
+  nns_neighbours: 3
+  eval_every: 5
+  eval_episodes: 30
+  selection: "train_val_mean"
+  save_best: true
+
+plotting:
+  window_size: 10
+
+ppo:
+  # The environment's reward is revenue, so maximise it.
+  minimize_env_reward: False
+  normalize_rewards: True
+  reward_norm_eps: 1.0e-8
+  reward_clip: null
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_param: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  actor_lr: 0.001
+  critic_lr: 0.005
+  policy_beta: 1
+  normalize_obj_values: true
+  obj_norm_eps: 1.0e-8
+  opt_epochs: 10
+  mini_batch_size: 32
+  # Two episodes of 80 steps per rollout.
+  rollout_iters: 160
+  target_kl: 0.01
+  normalize_adv: True
+  nn_sample: True
+
+reset_env_each_rollout: false
+
+# 200 iterations x 2 episodes = 400 training episodes.
+total_iters: 200
+
+explicit_sol_time: 4
+comp_expected: False
+comp_expected_every: 100
+terminal_log_every: 100

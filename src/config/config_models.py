@@ -45,7 +45,7 @@ class TrainingConfig(StrictConfig):
     algorithm: Literal["vanilla_gradient", "ppo"] = Field(
         description="Training algorithm."
     )
-    solver: Literal["scip", "scip_brute", "bnb", "enumeration"] = Field(
+    solver: Literal["scip", "scip_brute", "bnb", "enumeration", "exact_assortment"] = Field(
         description="MILP solver implementation."
     )
 
@@ -179,6 +179,49 @@ class EnumerationConfig(StrictConfig):
     )
 
 
+class DapConfig(StrictConfig):
+    n_value_pieces: int = Field(
+        ge=0,
+        description="Piecewise-linear value pieces J in the MILP; 0 = linear top-k.",
+    )
+    k: int = Field(4, gt=0, description="Assortment size (paper 02: 4).")
+    train_seeds: tuple[int, int] = Field(
+        (1, 100), description="Inclusive range of training episode seeds."
+    )
+    seed_order: Literal["cycle", "random"] = Field(
+        "cycle", description="Cycle through the training seeds (paper 02) or sample."
+    )
+    init_reward_range: tuple[float, float] | None = Field(
+        (100.0, 200.0),
+        description=(
+            "Resample the initial parameters until the deterministic policy "
+            "earns this on episodes 1-10 (paper 02 starts at 100-200); null = any."
+        ),
+    )
+    nns_neighbours: int = Field(
+        3, gt=0, description="Neighbours for sampling at fractional B&B nodes (NNS-k)."
+    )
+    eval_every: int = Field(
+        ge=0, description="Outer iterations between evaluations; 0 disables."
+    )
+    eval_episodes: int = Field(
+        30, gt=0, description="Train and validation episodes per evaluation."
+    )
+    selection: Literal["train_val_mean", "val"] = Field(
+        "train_val_mean",
+        description="Best-model criterion (paper 02: mean of train and val).",
+    )
+    save_best: bool = Field(
+        description="Save the parameters with the best selection reward."
+    )
+
+
+class ExactAssortmentConfig(StrictConfig):
+    max_candidates: int | None = Field(
+        None, gt=0, description="Keep only the lowest-Q assortments; null = all."
+    )
+
+
 class PpoConfig(StrictConfig):
     nn_sample: bool = Field(
         description="PPO override for fractional-solution sampling."
@@ -240,7 +283,7 @@ class AppConfig(StrictConfig):
     wandb_mode: Literal["online", "offline", "disabled", "shared"] = Field(
         description="Weights & Biases execution mode."
     )
-    problem: Literal["example", "portfolio"] = Field(
+    problem: Literal["example", "portfolio", "dap"] = Field(
         description="Optimization problem implementation."
     )
     portfolio_zero_init_seeds: list[int] = Field(
@@ -254,12 +297,14 @@ class AppConfig(StrictConfig):
     scip: ScipConfig | None = None
     scip_brute: ScipBruteConfig | None = None
     enumeration: EnumerationConfig | None = None
+    exact_assortment: ExactAssortmentConfig | None = None
     training: TrainingConfig
     model: ModelConfig | None = None
     gym: GymConfig | None = None
     plotting: PlottingConfig
     portfolio_model: PortfolioModelConfig | None = None
     portfolio_env: PortfolioEnvConfig | None = None
+    dap: DapConfig | None = None
     ppo: PpoConfig
     vanilla_gradient: VanillaGradientConfig | None = None
     reset_env_each_rollout: bool = Field(
@@ -285,11 +330,13 @@ class AppConfig(StrictConfig):
         required = {
             "example": ["model", "gym"],
             "portfolio": ["model", "gym", "portfolio_model", "portfolio_env"],
+            "dap": ["dap"],
         }[self.problem]
         solver_section = {
             "scip": "scip",
             "scip_brute": "scip_brute",
             "enumeration": "enumeration",
+            "exact_assortment": "exact_assortment",
         }.get(self.training.solver)
         if solver_section is not None:
             required.append(solver_section)
@@ -302,4 +349,11 @@ class AppConfig(StrictConfig):
                 f"'{self.problem}' with solver '{self.training.solver}' and "
                 f"algorithm '{self.training.algorithm}'."
             )
+        if self.problem == "dap":
+            if self.training.algorithm != "ppo":
+                raise ValueError("problem 'dap' currently supports only 'ppo'.")
+            if self.comp_expected:
+                raise ValueError("comp_expected is not available for 'dap'.")
+        if self.training.solver == "exact_assortment" and self.problem != "dap":
+            raise ValueError("solver 'exact_assortment' only applies to problem 'dap'.")
         return self

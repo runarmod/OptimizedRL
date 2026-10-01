@@ -9,11 +9,12 @@ from tqdm import tqdm
 
 from src.config.config_loader import load_config
 from src.config.config_models import AppConfig
-from src.gym_envs import example_env, portfolio_env
+from src.dap.evaluation import DAPValidation, find_initial_theta
+from src.gym_envs import dap_env, example_env, portfolio_env
 from src.gym_envs.env_interface import Env
-from src.models import example_model, portfolio_model
+from src.models import dap_model, example_model, portfolio_model
 from src.models.model_interface import Model
-from src.solvers import bnb, enumeration, scip, scip_brute
+from src.solvers import bnb, enumeration, exact_assortment, scip, scip_brute
 from src.solvers.solver_interface import Solver
 from src.training_algorithm.ppo.ppo import PPO_MILP_Agent
 from src.training_algorithm.training_algorithm_interface import (
@@ -111,9 +112,14 @@ def build_solver(config: AppConfig):
                 integral_only=config.enumeration.integral_only,
             )
 
+        case "exact_assortment":
+            return exact_assortment.ExactAssortmentSolver(
+                max_candidates=config.exact_assortment.max_candidates,
+            )
+
     raise ValueError(
-        "training.solver must be one of 'scip', 'scip_brute', 'bnb' or "
-        f"'enumeration'. Got '{config.training.solver}'."
+        "training.solver must be one of 'scip', 'scip_brute', 'bnb', "
+        f"'enumeration' or 'exact_assortment'. Got '{config.training.solver}'."
     )
 
 
@@ -126,6 +132,43 @@ def resolve_runtime_device(configured_device):
 
 def resolve_path(path: Path, project_root: Path) -> Path:
     return path if path.is_absolute() else project_root / path
+
+
+def build_dap(
+    config: AppConfig, project_root: Path
+) -> tuple[Model, Env, DAPValidation | None]:
+    cfg = config.dap
+    if config.load:
+        if config.load_path is None:
+            raise ValueError("Config 'load' is True but 'load_path' is not set.")
+        with resolve_path(config.load_path, project_root).open() as params_file:
+            theta = np.array(yaml.safe_load(params_file)["theta"], dtype=float)
+    else:
+        theta, tries, reward = find_initial_theta(
+            cfg.n_value_pieces, config.numpy_seed, cfg.init_reward_range
+        )
+        print(f"Initial parameters: {tries} draw(s), deterministic reward {reward:.1f}")
+
+    model = dap_model.DAPModel(
+        theta,
+        cfg.n_value_pieces,
+        k=cfg.k,
+        nns_neighbours=cfg.nns_neighbours,
+        seed=config.numpy_seed,
+    )
+    first, last = cfg.train_seeds
+    environment = dap_env.DAPEnv(
+        range(first, last + 1), seed_order=cfg.seed_order, seed=config.numpy_seed
+    )
+    environment.reset(seed=config.numpy_seed)
+    model.update_from_environment(environment)
+
+    validation = None
+    if cfg.eval_every > 0:
+        validation = DAPValidation(
+            cfg.n_value_pieces, n_episodes=cfg.eval_episodes, selection=cfg.selection
+        )
+    return model, environment, validation
 
 
 def save_best_params(
@@ -345,7 +388,11 @@ def main():
 
     validation = None
     eval_every = 0
-    model, env = build_model_and_env(config, project_root)
+    if config.problem == "dap":
+        model, env, validation = build_dap(config, project_root)
+        eval_every = config.dap.eval_every
+    else:
+        model, env = build_model_and_env(config, project_root)
     if config.comp_expected:
         original_A = env.A
         original_B = env.B
