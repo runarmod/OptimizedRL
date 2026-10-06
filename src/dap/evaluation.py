@@ -37,7 +37,7 @@ def expert_policy(sim: DAPSimulator) -> np.ndarray:
     return assortments[int(np.argmax(expected))]
 
 
-def milp_policy(theta: np.ndarray, n_pieces: int) -> Policy:
+def milp_policy(theta: np.ndarray, n_pieces: int, pairwise: bool = False) -> Policy:
     """Deterministic CORL policy: the MILP optimum (argmin Q over assortments)."""
     theta = np.asarray(theta, dtype=float)
     cache = {}
@@ -48,7 +48,7 @@ def milp_policy(theta: np.ndarray, n_pieces: int) -> Policy:
             cache[key] = all_assortments(*key)
         assortments = cache[key]
         phi = model_features(sim.item_features())
-        values, _ = assortment_values(theta, n_pieces, phi, assortments)
+        values, _ = assortment_values(theta, n_pieces, phi, assortments, pairwise)
         return assortments[int(np.argmin(values))]
 
     return policy
@@ -79,6 +79,7 @@ def find_initial_theta(
     reward_range: tuple[float, float] | None,
     check_seeds: Sequence[int] = range(1, 11),
     max_tries: int = 1000,
+    pairwise: bool = False,
 ) -> tuple[np.ndarray, int, float]:
     """Random initial parameters, optionally restricted to a reward range.
 
@@ -90,8 +91,8 @@ def find_initial_theta(
     rng = np.random.default_rng(seed)
     sim = DAPSimulator()
     for tries in range(1, max_tries + 1):
-        theta = initial_theta(n_pieces, rng)
-        reward = float(evaluate(milp_policy(theta, n_pieces), check_seeds, sim).mean())
+        theta = initial_theta(n_pieces, rng, pairwise)
+        reward = float(evaluate(milp_policy(theta, n_pieces, pairwise), check_seeds, sim).mean())
         if reward_range is None or reward_range[0] <= reward <= reward_range[1]:
             return theta, tries, reward
     raise RuntimeError(f"no initialisation with reward in {reward_range} in {max_tries} tries")
@@ -105,8 +106,10 @@ class DAPValidation:
     with the best mean of the two.
     """
 
-    def __init__(self, n_pieces: int, n_episodes: int = 30, selection: str = "train_val_mean"):
+    def __init__(self, n_pieces: int, n_episodes: int = 30, selection: str = "train_val_mean",
+                 pairwise: bool = False):
         self.n_pieces = n_pieces
+        self.pairwise = pairwise
         self.seeds = {"train": TRAIN_SEEDS[:n_episodes], "val": VAL_SEEDS[:n_episodes]}
         self.selection = selection
         self.sim = DAPSimulator()
@@ -114,7 +117,7 @@ class DAPValidation:
         self.best = -np.inf
 
     def evaluate(self, theta: np.ndarray) -> dict[str, float]:
-        policy = milp_policy(theta, self.n_pieces)
+        policy = milp_policy(theta, self.n_pieces, self.pairwise)
         metrics = {}
         for name, seeds in self.seeds.items():
             rewards = evaluate(policy, seeds, self.sim)

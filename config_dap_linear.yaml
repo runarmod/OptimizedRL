@@ -1,6 +1,7 @@
 # CORL on the Dynamic Assortment Problem (paper 02, Hoppe et al. 2025).
-# Ablation: no value pieces, so the MILP is paper 02's linear actor with a
-# top-k layer, trained with CORL (exact softmax; its LP is always integral).
+# Ablation: no value pieces and no pairwise terms, so the MILP is paper 02's
+# linear actor with a top-k layer, trained with CORL (exact softmax; its LP
+# relaxation is always integral, so B&B would only see the root).
 # Run with: uv run python train.py --config config_dap_linear.yaml
 name: "dap corl linear"
 
@@ -24,6 +25,7 @@ exact_assortment:
 
 dap:
   n_value_pieces: 0
+  pairwise: false
   k: 4
   train_seeds: [1, 100]
   seed_order: "cycle"
@@ -64,8 +66,8 @@ ppo:
 
 reset_env_each_rollout: false
 
-# 200 iterations x 2 episodes = 400 training episodes.
-total_iters: 200
+# 400 iterations x 2 episodes = 800 training episodes (same as config_dap.yaml).
+total_iters: 400
 
 explicit_sol_time: 4
 comp_expected: False

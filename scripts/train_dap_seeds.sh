@@ -3,7 +3,7 @@
 #
 # Each seed runs train.py with the given config, only changing `numpy_seed` and
 # appending " seed <k>" to `name`, so parameters are saved per seed (for
-# config_dap.yaml: params/dap_dap_corl_bnb_seed_<k>_best.yaml). Logs go to
+# config_dap.yaml: params/dap_dap_corl_scip_seed_<k>_best.yaml). Logs go to
 # logs/<config>_seed<k>.out.
 #
 # Usage: scripts/train_dap_seeds.sh [-c config_dap.yaml] [-s "0 1 2 3 4 5 6 7 8 9"] [-j 10]

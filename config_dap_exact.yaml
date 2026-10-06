@@ -24,6 +24,9 @@ exact_assortment:
 
 dap:
   n_value_pieces: 2
+  # Pairwise interactions make the LP relaxation fractional (~95% of states),
+  # so SCIP builds a real tree (~17 leaves on average, mostly pruned nodes).
+  pairwise: true
   k: 4
   train_seeds: [1, 100]
   seed_order: "cycle"
@@ -64,8 +67,8 @@ ppo:
 
 reset_env_each_rollout: false
 
-# 200 iterations x 2 episodes = 400 training episodes.
-total_iters: 200
+# 400 iterations x 2 episodes = 800 training episodes (same as config_dap.yaml).
+total_iters: 400
 
 explicit_sol_time: 4
 comp_expected: False

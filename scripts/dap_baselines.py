@@ -41,11 +41,13 @@ PAPER02 = {
 }
 
 
-def n_pieces_of(theta: np.ndarray) -> int:
-    for j in range(0, 64):
-        if n_params(j) == theta.size:
-            return j
-    raise ValueError(f"cannot infer the number of value pieces from {theta.size} parameters")
+def model_variant(theta: np.ndarray) -> tuple[int, bool]:
+    """(value pieces, pairwise) from the parameter count, which is unique per variant."""
+    for pairwise in (False, True):
+        for j in range(0, 64):
+            if n_params(j, pairwise) == theta.size:
+                return j, pairwise
+    raise ValueError(f"cannot infer the model variant from {theta.size} parameters")
 
 
 def main():
@@ -59,7 +61,7 @@ def main():
     corl = {s: [] for s in splits}
     for path in args.params:
         theta = np.array(yaml.safe_load(open(path))["theta"], dtype=float)
-        policy = milp_policy(theta, n_pieces_of(theta))
+        policy = milp_policy(theta, *model_variant(theta))
         for s, seeds in splits.items():
             corl[s].append(evaluate(policy, seeds).mean())
         print(f"  {Path(path).name}: train {corl['train'][-1]:.1f}  test {corl['test'][-1]:.1f}")

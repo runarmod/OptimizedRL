@@ -14,7 +14,7 @@ from src.gym_envs import dap_env, example_env, portfolio_env
 from src.gym_envs.env_interface import Env
 from src.models import dap_model, example_model, portfolio_model
 from src.models.model_interface import Model
-from src.solvers import bnb, enumeration, exact_assortment, scip, scip_brute
+from src.solvers import bnb, exact_assortment, scip, scip_brute
 from src.solvers.solver_interface import Solver
 from src.training_algorithm.ppo.ppo import PPO_MILP_Agent
 from src.training_algorithm.training_algorithm_interface import (
@@ -107,21 +107,14 @@ def build_solver(config: AppConfig):
                 node_limit=config.scip_brute.node_limit,
             )
 
-        case "enumeration":
-            return enumeration.BranchEnumerationSolver(
-                max_pool_size=config.enumeration.max_pool_size,
-                max_depth=config.enumeration.max_depth,
-                integral_only=config.enumeration.integral_only,
-            )
-
         case "exact_assortment":
             return exact_assortment.ExactAssortmentSolver(
                 max_candidates=config.exact_assortment.max_candidates,
             )
 
     raise ValueError(
-        "training.solver must be one of 'scip', 'scip_brute', 'bnb', "
-        f"'enumeration' or 'exact_assortment'. Got '{config.training.solver}'."
+        "training.solver must be one of 'scip', 'scip_brute', 'bnb' or "
+        f"'exact_assortment'. Got '{config.training.solver}'."
     )
 
 
@@ -147,13 +140,16 @@ def build_dap(
             theta = np.array(yaml.safe_load(params_file)["theta"], dtype=float)
     else:
         theta, tries, reward = find_initial_theta(
-            cfg.n_value_pieces, config.numpy_seed, cfg.init_reward_range
+            cfg.n_value_pieces, config.numpy_seed, cfg.init_reward_range,
+            pairwise=cfg.pairwise,
         )
         print(f"Initial parameters: {tries} draw(s), deterministic reward {reward:.1f}")
 
     model = dap_model.DAPModel(
         theta,
         cfg.n_value_pieces,
+        pairwise=cfg.pairwise,
+        node_values=cfg.node_values,
         k=cfg.k,
         nns_neighbours=cfg.nns_neighbours,
         seed=config.numpy_seed,
@@ -168,7 +164,10 @@ def build_dap(
     validation = None
     if cfg.eval_every > 0:
         validation = DAPValidation(
-            cfg.n_value_pieces, n_episodes=cfg.eval_episodes, selection=cfg.selection
+            cfg.n_value_pieces,
+            n_episodes=cfg.eval_episodes,
+            selection=cfg.selection,
+            pairwise=cfg.pairwise,
         )
     return model, environment, validation
 

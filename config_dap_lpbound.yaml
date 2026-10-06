@@ -1,13 +1,9 @@
 # CORL on the Dynamic Assortment Problem (paper 02, Hoppe et al. 2025).
-# Main method: 2 value pieces + pairwise item interactions, solved with SCIP
-# branch-and-bound. The candidates are the leaves of SCIP's tree (pruned nodes
-# completed by NNS-3), each scored by the exact Q of the assortment it
-# executes ("completed" node values, a bias correction of CORL eq. 12).
-# Ablations: config_dap_lpbound.yaml (the paper's LP-bound node values),
-# config_dap_exact.yaml (exact softmax over all assortments) and
-# config_dap_linear.yaml (paper 02's linear top-k actor).
-# Run with: uv run python train.py --config config_dap.yaml
-name: "dap corl scip"
+# Ablation: CORL exactly as in the paper. Same MILP and SCIP tree as
+# config_dap.yaml, but pruned nodes enter the softmax with their LP bound
+# (CORL eq. 12) and NNS-3 picks the executed assortment afterwards.
+# Run with: uv run python train.py --config config_dap_lpbound.yaml
+name: "dap corl scip lpbound"
 
 wandb_mode: "online"
 
@@ -54,7 +50,7 @@ dap:
   # completed = score each candidate by its executed assortment's exact Q.
   # With the paper's lp_bound, pruned nodes' (weak) LP bounds barely relate to
   # what is executed and learning stalls.
-  node_values: "completed"
+  node_values: "lp_bound"
   k: 4
   train_seeds: [1, 100]
   seed_order: "cycle"

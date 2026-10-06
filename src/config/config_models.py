@@ -55,7 +55,7 @@ class TrainingConfig(StrictConfig):
     algorithm: Literal["vanilla_gradient", "ppo"] = Field(
         description="Training algorithm."
     )
-    solver: Literal["scip", "scip_brute", "bnb", "enumeration", "exact_assortment"] = Field(
+    solver: Literal["scip", "scip_brute", "bnb", "exact_assortment"] = Field(
         description="MILP solver implementation."
     )
 
@@ -177,22 +177,24 @@ class PortfolioEnvConfig(StrictConfig):
     min_asset_price: float = Field(gt=0, description="Minimum asset price.")
 
 
-class EnumerationConfig(StrictConfig):
-    max_pool_size: int = Field(
-        gt=0, description="Maximum number of candidates in the policy pool."
-    )
-    max_depth: int = Field(
-        ge=0, description="Maximum number of branching fixings from the root."
-    )
-    integral_only: bool = Field(
-        description="Drop fractional candidates instead of returning pruned nodes."
-    )
-
-
 class DapConfig(StrictConfig):
     n_value_pieces: int = Field(
         ge=0,
         description="Piecewise-linear value pieces J in the MILP; 0 = linear top-k.",
+    )
+    pairwise: bool = Field(
+        False,
+        description=(
+            "Learned interaction costs between shown items (McCormick-"
+            "linearised), which gives SCIP fractional LPs and real B&B trees."
+        ),
+    )
+    node_values: Literal["lp_bound", "completed"] = Field(
+        "lp_bound",
+        description=(
+            "Value of a B&B candidate in the CORL softmax: its LP bound (CORL "
+            "paper eq. 12) or the exact Q of the assortment it executes."
+        ),
     )
     k: int = Field(4, gt=0, description="Assortment size (paper 02: 4).")
     train_seeds: tuple[int, int] = Field(
@@ -306,7 +308,6 @@ class AppConfig(StrictConfig):
     device: str = Field(description="Requested Torch device, such as cpu or cuda.")
     scip: ScipConfig | None = None
     scip_brute: ScipBruteConfig | None = None
-    enumeration: EnumerationConfig | None = None
     exact_assortment: ExactAssortmentConfig | None = None
     training: TrainingConfig
     model: ModelConfig | None = None
@@ -345,7 +346,6 @@ class AppConfig(StrictConfig):
         solver_section = {
             "scip": "scip",
             "scip_brute": "scip_brute",
-            "enumeration": "enumeration",
             "exact_assortment": "exact_assortment",
         }.get(self.training.solver)
         if solver_section is not None:
