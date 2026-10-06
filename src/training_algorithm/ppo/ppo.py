@@ -292,6 +292,10 @@ class PPOMILPAgent(TrainingAlgorithm):
         self._sync_model_params_from_theta()
         node = self.model.get_LP_formulation()
         sol_pool = self.solver.solve(node)
+        if sol_pool and hasattr(self.model, "refine_pool"):
+            # Model-specific rescoring of the candidates (e.g. evaluating pruned
+            # nodes by the action they would execute instead of their LP bound).
+            sol_pool = self.model.refine_pool(sol_pool)
         if not sol_pool:
             n_vars = len(node["c"])
             return AlgorithmDecision(

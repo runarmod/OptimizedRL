@@ -8,6 +8,7 @@ from pyscipopt import (
     Model,
     quicksum,
 )
+from scipy import sparse
 from scipy.optimize import linprog as _linprog
 
 _INVALID_OBJ = -1e18
@@ -57,10 +58,46 @@ def _var_name_to_id(var_name):
     return var_name
 
 
+
+def _as_sparse(matrix):
+    """CSR copy of a (dense or sparse) constraint matrix; None stays None."""
+    return None if matrix is None else sparse.csr_matrix(matrix)
+
+
+def _row_items(csr, row_idx):
+    """(column, value) pairs of the non-zeros in one CSR row."""
+    start, end = csr.indptr[row_idx], csr.indptr[row_idx + 1]
+    return zip(csr.indices[start:end], csr.data[start:end])
+
+
+def _release_tracker(tracker):
+    """Break the event handler <-> SCIP model reference cycle after a solve.
+
+    Python frees such cycles only when its cyclic garbage collector runs,
+    which is triggered by object counts, not memory; the SCIP model's C
+    memory would otherwise pile up (~0.5 MB per solve on the DAP).
+    """
+    if tracker is None:
+        return
+    for attr in ("node_map", "parent_bounds"):
+        if hasattr(tracker, attr):
+            setattr(tracker, attr, {})
+    try:
+        tracker.model = None
+    except Exception:
+        pass
+
+
 class NodeTracker(Eventhdlr):
-    def __init__(self, integer, ineq_cons_names=None, eq_cons_names=None):
+    def __init__(
+        self, integer, ineq_cons_names=None, eq_cons_names=None, collect_lp_details=True
+    ):
         super().__init__()
         self.integer = integer
+        # Per-node LP primal/dual/reduced-cost values and node bounds are only
+        # used for logging (the pool re-solves leaves from their branching
+        # conditions); skipping them makes large trees much cheaper to track.
+        self.collect_lp_details = collect_lp_details
         self.ineq_cons_names = list(ineq_cons_names or [])
         self.eq_cons_names = list(eq_cons_names or [])
         self.node_map = {}
@@ -232,7 +269,9 @@ class NodeTracker(Eventhdlr):
 
         try:
             node_bounds = {}
-            for var in model.getVars():
+            # Bounds are only needed to deduce branchings SCIP did not report.
+            skip_bounds = not self.collect_lp_details and bool(local_conds)
+            for var in [] if skip_bounds else model.getVars():
                 try:
                     lb_v = var.getLbLocal() if hasattr(var, "getLbLocal") else None
                     ub_v = var.getUbLocal() if hasattr(var, "getUbLocal") else None
@@ -293,7 +332,7 @@ class NodeTracker(Eventhdlr):
         except Exception:
             pass
 
-        if status == "lp_solved":
+        if status == "lp_solved" and self.collect_lp_details:
             try:
                 for var in model.getVars():
                     entry["primal"][var.name] = self._read_lp_primal(model, var)
@@ -455,8 +494,14 @@ class SCIPSolver:
         tighten_integer_projected_bounds=False,
         mimic_bnb_pool_filter=False,
         prefer_depth_first=True,
+        collect_lp_details=True,
+        node_limit=None,
     ):
         self.verbose = verbose
+        self.collect_lp_details = collect_lp_details
+        # Stop B&B after this many nodes; the explored tree still defines the
+        # candidate pool (CORL only needs the explored leaves and pruned nodes).
+        self.node_limit = node_limit
         self.disable_heuristics = disable_heuristics
         self.disable_presolve = disable_presolve
         self.disable_separating = disable_separating
@@ -686,6 +731,9 @@ class SCIPSolver:
         if self.disable_symmetry:
             self._safe_set(model, "misc/usesymmetry", 0)
 
+        if self.node_limit is not None:
+            self._safe_set(model, "limits/nodes", int(self.node_limit))
+
         if self.prefer_most_fractional_branching:
             try:
                 model.includeBranchrule(
@@ -881,6 +929,7 @@ class SCIPSolver:
         n_vars = len(c)
 
         model = Model("MILP")
+        tracker = None
         try:
             self._configure_model(model)
 
@@ -903,11 +952,11 @@ class SCIPSolver:
 
             ineq_cons_names = []
             if a_ub is not None and b_ub is not None:
-                for row_idx in range(a_ub.shape[0]):
+                a_ub_rows = _as_sparse(a_ub)
+                for row_idx in range(a_ub_rows.shape[0]):
                     expr = quicksum(
-                        float(a_ub[row_idx, col_idx]) * vars_[col_idx]
-                        for col_idx in range(n_vars)
-                        if a_ub[row_idx, col_idx] != 0
+                        float(value) * vars_[col_idx]
+                        for col_idx, value in _row_items(a_ub_rows, row_idx)
                     )
                     cons = model.addCons(expr <= float(b_ub[row_idx]))
                     try:
@@ -917,11 +966,11 @@ class SCIPSolver:
 
             eq_cons_names = []
             if a_eq is not None and b_eq is not None:
-                for row_idx in range(a_eq.shape[0]):
+                a_eq_rows = _as_sparse(a_eq)
+                for row_idx in range(a_eq_rows.shape[0]):
                     expr = quicksum(
-                        float(a_eq[row_idx, col_idx]) * vars_[col_idx]
-                        for col_idx in range(n_vars)
-                        if a_eq[row_idx, col_idx] != 0
+                        float(value) * vars_[col_idx]
+                        for col_idx, value in _row_items(a_eq_rows, row_idx)
                     )
                     cons = model.addCons(expr == float(b_eq[row_idx]))
                     try:
@@ -930,7 +979,10 @@ class SCIPSolver:
                         eq_cons_names.append(str(cons))
 
             tracker = NodeTracker(
-                integer, ineq_cons_names=ineq_cons_names, eq_cons_names=eq_cons_names
+                integer,
+                ineq_cons_names=ineq_cons_names,
+                eq_cons_names=eq_cons_names,
+                collect_lp_details=self.collect_lp_details,
             )
             try:
                 model.includeEventhdlr(
@@ -944,6 +996,8 @@ class SCIPSolver:
             except Exception:
                 return None
 
+            # Sparse matrices once per solve for the leaf LP re-solves.
+            lp_node = dict(init_node, A_ub=_as_sparse(a_ub), A_eq=_as_sparse(a_eq))
             results = []
             seen_x = set()
             added_nodes = 0
@@ -984,7 +1038,7 @@ class SCIPSolver:
                     pool_debug["leaf_deleted_nodes_seen"] += 1
 
                 conds = list(info.get("conds", []))
-                lp_solution = self._solve_lp_with_conds(init_node, conds)
+                lp_solution = self._solve_lp_with_conds(lp_node, conds)
                 if lp_solution is None:
                     pool_debug["leaf_lp_infeasible"] += 1
                     continue
@@ -1072,3 +1126,4 @@ class SCIPSolver:
             return results if results else None
         finally:
             self._cleanup_model(model)
+            _release_tracker(tracker)

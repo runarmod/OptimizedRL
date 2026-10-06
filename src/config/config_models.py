@@ -39,6 +39,16 @@ class ScipBruteConfig(StrictConfig):
         description="Filter the candidate pool using BnB-like ordering."
     )
     prefer_depth_first: bool = Field(description="Prefer depth-first node selection.")
+    collect_lp_details: bool = Field(
+        True,
+        description=(
+            "Record per-node LP primal/dual values and bounds (logging only); "
+            "false makes large trees much faster."
+        ),
+    )
+    node_limit: int | None = Field(
+        None, gt=0, description="Stop branch-and-bound after this many nodes."
+    )
 
 
 class TrainingConfig(StrictConfig):

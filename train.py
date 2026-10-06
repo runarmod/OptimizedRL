@@ -103,6 +103,8 @@ def build_solver(config: AppConfig):
                 tighten_integer_projected_bounds=config.scip_brute.tighten_integer_projected_bounds,
                 mimic_bnb_pool_filter=config.scip_brute.mimic_bnb_pool_filter,
                 prefer_depth_first=config.scip_brute.prefer_depth_first,
+                collect_lp_details=config.scip_brute.collect_lp_details,
+                node_limit=config.scip_brute.node_limit,
             )
 
         case "enumeration":

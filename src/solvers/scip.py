@@ -19,6 +19,25 @@ def _normalize_linprog_duals(marginals, constraint_matrix):
     return duals.reshape(-1)
 
 
+
+def _release_tracker(tracker):
+    """Break the event handler <-> SCIP model reference cycle after a solve.
+
+    Python frees such cycles only when its cyclic garbage collector runs,
+    which is triggered by object counts, not memory; the SCIP model's C
+    memory would otherwise pile up (~0.5 MB per solve on the DAP).
+    """
+    if tracker is None:
+        return
+    for attr in ("node_map", "parent_bounds"):
+        if hasattr(tracker, attr):
+            setattr(tracker, attr, {})
+    try:
+        tracker.model = None
+    except Exception:
+        pass
+
+
 class NodeTracker(Eventhdlr):
     """Collects per-node LP primal/dual solutions via NODEFOCUSED events.
 
@@ -544,6 +563,7 @@ class SCIPSolver:
             ]
 
         model = Model("MILP")
+        tracker = None
         try:
             # --- Root LP relaxation (always in pool; guarantees KKT-valid candidates) ---
             root_lp = self._solve_root_lp(init_node)
@@ -857,3 +877,4 @@ class SCIPSolver:
             return results
         finally:
             self._cleanup_model(model)
+            _release_tracker(tracker)
