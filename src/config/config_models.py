@@ -49,6 +49,14 @@ class ScipBruteConfig(StrictConfig):
     node_limit: int | None = Field(
         None, gt=0, description="Stop branch-and-bound after this many nodes."
     )
+    min_pool_size: int | None = Field(
+        None,
+        gt=0,
+        description=(
+            "If the explored tree has fewer leaves, add the best depth-1 branch "
+            "nodes until the pool has this many candidates; null = off."
+        ),
+    )
 
 
 class TrainingConfig(StrictConfig):

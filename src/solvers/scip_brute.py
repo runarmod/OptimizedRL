@@ -496,8 +496,13 @@ class SCIPSolver:
         prefer_depth_first=True,
         collect_lp_details=True,
         node_limit=None,
+        min_pool_size=None,
     ):
         self.verbose = verbose
+        # When the explored tree has fewer leaves than this (e.g. an integral
+        # root LP), add depth-1 branch nodes by hand so the policy always has
+        # alternatives to choose from.
+        self.min_pool_size = min_pool_size
         self.collect_lp_details = collect_lp_details
         # Stop B&B after this many nodes; the explored tree still defines the
         # candidate pool (CORL only needs the explored leaves and pruned nodes).
@@ -917,6 +922,53 @@ class SCIPSolver:
             "status": "lp_branch_relaxation",
         }
 
+    def _add_fallback_children(self, lp_node, results, append_unique):
+        """Depth-1 branch nodes around the best candidate, best LP value first.
+
+        Every integer variable is branched on once (to the other side of its
+        current value; both sides if fractional), each child LP is solved, and
+        the best children are added until the pool reaches min_pool_size.
+        Children are ordinary B&B nodes: their branching conditions are kept,
+        so samplers can respect them.
+        """
+        if results:
+            base = min(results, key=lambda entry: entry["fun"])
+        else:
+            base = self._solve_lp_with_conds(lp_node, [])
+            if base is None:
+                return 0
+            base = dict(base, fathomed=True, status="scip_root_lp")
+            append_unique(base)
+        ref_x = np.asarray(base["x"], dtype=float)
+        base_conds = list(base.get("conds", []))
+
+        children = []
+        for idx, (is_int, (lb, ub)) in enumerate(zip(lp_node["integer"], lp_node["bounds"])):
+            if not is_int:
+                continue
+            value = float(ref_x[idx])
+            if abs(value - round(value)) > 1e-6:
+                branches = [(idx, "<=", float(np.floor(value))), (idx, ">=", float(np.ceil(value)))]
+            else:
+                branches = []
+                if lb is None or round(value) - 1 >= lb - 1e-9:
+                    branches.append((idx, "<=", float(round(value) - 1)))
+                if ub is None or round(value) + 1 <= ub + 1e-9:
+                    branches.append((idx, ">=", float(round(value) + 1)))
+            for branch in branches:
+                child = self._solve_lp_with_conds(lp_node, base_conds + [branch])
+                if child is not None and self._is_valid_native_candidate(child["x"], child["fun"]):
+                    children.append(child)
+
+        added = 0
+        for child in sorted(children, key=lambda entry: entry["fun"]):
+            if len(results) >= self.min_pool_size:
+                break
+            entry = dict(child, fathomed=True, status="fallback_branch")
+            if append_unique(entry):
+                added += 1
+        return added
+
     def solve(self, init_node):
         self.last_tree_snapshot = None
         c = init_node["c"]
@@ -1074,6 +1126,11 @@ class SCIPSolver:
                     }
                 ):
                     added_nodes += 1
+
+            if self.min_pool_size is not None and len(results) < self.min_pool_size:
+                pool_debug["fallback_children"] = self._add_fallback_children(
+                    lp_node, results, _append_unique
+                )
 
             pool_debug["pre_filter_results"] = len(results)
 
