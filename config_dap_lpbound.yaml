@@ -41,6 +41,10 @@ scip_brute:
   # ~100 after 40 iterations, ~700 ms/solve). 50 nodes keeps ~25 candidate
   # assortments at ~250 ms/solve. null = full tree.
   node_limit: 50
+  # If the tree collapses (integral root LP: one candidate, no gradient), add
+  # the best depth-1 branch nodes up to 8 candidates. In the first 10-seed run
+  # two seeds got stuck with a single candidate in 65-82% of steps.
+  min_pool_size: 8
 
 dap:
   n_value_pieces: 2

@@ -24,6 +24,7 @@ from src.dap.evaluation import (  # noqa: E402
 )
 from src.dap.simulator import DAPSimulator  # noqa: E402
 from src.models.dap_model import DAPModel  # noqa: E402
+from src.solvers import scip_brute  # noqa: E402
 from src.solvers.exact_assortment import ExactAssortmentSolver  # noqa: E402
 
 
@@ -117,6 +118,11 @@ def main():
     # --- SCIP branch-and-bound pool ----------------------------------------
     config = load_config(PROJECT_ROOT / "config_dap.yaml")
     scip = train.build_solver(config)
+    brute_kwargs = {
+        name: getattr(config.scip_brute, name)
+        for name in config.scip_brute.model_fields
+        if name != "min_pool_size"
+    }
     started = time.time()
     scip_pool = scip.solve(node) or []
     solve_ms = (time.time() - started) * 1000
@@ -134,6 +140,23 @@ def main():
                 assert action[var] == (1 if op == ">=" and value >= 0.5 else action[var])
                 assert action[var] == (0 if op == "<=" and value <= 0.5 else action[var])
     check(True, "every SCIP candidate completes (NNS-3) to a valid assortment respecting its branching")
+
+    # --- fallback when the tree collapses (min_pool_size) -------------------
+    linear = DAPModel(dap_milp.initial_theta(0, rng), n_pieces=0)  # integral LP: tree = root
+    linear.update_from_environment(snap)
+    linear_node = linear.get_LP_formulation()
+    no_fallback = scip_brute.SCIPSolver(**brute_kwargs).solve(linear_node) or []
+    with_fallback = scip_brute.SCIPSolver(**brute_kwargs, min_pool_size=8).solve(linear_node) or []
+    statuses = {e["status"] for e in with_fallback}
+    check(len(no_fallback) == 1 and len(with_fallback) == 8 and "fallback_branch" in statuses,
+          f"collapsed tree: {len(no_fallback)} candidate without fallback, "
+          f"{len(with_fallback)} with min_pool_size=8")
+    for e in with_fallback:
+        action = linear.complete_action(e)
+        assert action.sum() == 4
+        for var, op, value in e["conds"]:
+            assert (op == ">=" and action[var] >= value) or (op == "<=" and action[var] <= value)
+    check(True, "fallback branch nodes complete to assortments respecting their branching")
 
     # --- bias-corrected node values ("completed") ---------------------------
     model.node_values = "completed"
