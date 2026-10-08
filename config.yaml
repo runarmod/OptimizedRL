@@ -13,9 +13,8 @@ device: "cuda"
 
 scip:
   verbose: false
-
-scip_brute:
-  verbose: false
+  # options: leaves | mixed
+  pool_mode: "leaves"
   disable_heuristics: true
   disable_presolve: true
   disable_separating: true
@@ -31,8 +30,8 @@ scip_brute:
 training:
   # options: vanilla_gradient | ppo
   algorithm: "ppo"
-  # options: scip | scip_brute | bnb
-  solver: "scip_brute"
+  # options: scip | bnb
+  solver: "scip"
 
 model:
   state_size: 6
