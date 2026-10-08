@@ -31,6 +31,7 @@ def build_training_algorithm(
     model: Model,
     solver: Solver,
     runtime_device: str,
+    state_dim: int,
 ) -> TrainingAlgorithm:
 
     match algorithm:
@@ -47,7 +48,7 @@ def build_training_algorithm(
             return PPO_MILP_Agent(
                 model=model,
                 solver=solver,
-                state_dim=config.model.state_size,
+                state_dim=state_dim,
                 gamma=ppo_cfg.gamma,
                 gae_lambda=ppo_cfg.gae_lambda,
                 clip_param=ppo_cfg.clip_param,
@@ -306,11 +307,13 @@ def main():
     runtime_device = resolve_runtime_device(config.device)
 
     model, env = build_model_and_env(config, project_root)
-    original_A = env.A
-    original_B = env.B
-    original_C = model.C
-    original_D = model.D
-    original_E = model.E
+    if config.comp_expected:
+        original_A = env.A
+        original_B = env.B
+        original_C = model.C
+        original_D = model.D
+        original_E = model.E
+
     original_model_params = model.get_params()
     state = env.state
 
@@ -323,9 +326,8 @@ def main():
         model,
         solver,
         runtime_device,
+        state_dim=int(np.asarray(state).reshape(-1).size),
     )
-
-    state = env.state
 
     rollout_iters = training_algorithm.rollout_iters
     total_iters = config.total_iters

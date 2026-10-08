@@ -2,7 +2,7 @@ import os
 
 import wandb
 from src.config.config_models import AppConfig
-from src.models.model_interface import ModelParameters
+from src.models.model_interface import ParameterSnapshot
 
 
 class Plotter:
@@ -83,16 +83,10 @@ class Plotter:
         self,
         algorithm: str,
         update_result: dict,
-        original_params: ModelParameters,
-        model_params: ModelParameters,
+        original_params: ParameterSnapshot,
+        model_params: ParameterSnapshot,
     ):
-        metrics = {
-            "c_change": ((-original_params.c - model_params.c) ** 2).sum(),
-            "aA_change": ((original_params.aA - model_params.aA) ** 2).sum(),
-            "aB_change": ((original_params.aB - model_params.aB) ** 2).sum(),
-            "b_change": ((original_params.b - model_params.b) ** 2).sum(),
-            "pol_grad": update_result["pol_grad_norm"],
-        }
+        metrics = model_params.change_metrics(original_params)
         for name, value in update_result["metrics"].items():
             metrics[f"{algorithm}_{name}"] = value
         self.run.log(metrics)
