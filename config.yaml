@@ -85,6 +85,16 @@ portfolio_env:
   initial_asset_price: 100.0
   min_asset_price: 1.0
 
+# Dynamic assortment problem. Values below are the setup of the SRL codebase.
+# For problem "dap" also set ppo.minimize_env_reward to False (the reward is
+# revenue) and rollout_iters to a multiple of max_steps.
+dap_env:
+  n_items: 20
+  assortment_size: 4
+  initial_inventory: 200
+  max_steps: 80
+  train_seeds: [1, 100]
+
 ppo:
   # Keep PPO aligned with your objective: minimize env reward.
   minimize_env_reward: True
