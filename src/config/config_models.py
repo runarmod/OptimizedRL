@@ -261,3 +261,7 @@ class AppConfig(StrictConfig):
     terminal_log_every: int = Field(
         gt=0, description="Window size for rolling terminal diagnostics."
     )
+    save_every: int = Field(
+        gt=0,
+        description=("Training iterations between saves of the model parameters."),
+    )

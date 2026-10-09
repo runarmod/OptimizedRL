@@ -2,7 +2,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import yaml
 from tqdm import tqdm
 
 from src.config.config_loader import load_config
@@ -22,6 +21,7 @@ from src.training_algorithm.vanilla_gradient.vanilla_gradient import (
     VanillaGradientAlgorithm,
 )
 from src.utils.calc_expected import calc_expected_reward
+from src.utils.checkpoint import load_model_params, save_model_params
 from src.utils.plotting import Plotter
 
 
@@ -162,19 +162,6 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
         E = np.full((num_cons,), 1e6)
         c_model = np.zeros((action_size,))
 
-    if config.load:
-        load_path = config.load_path
-        if load_path is None:
-            raise ValueError("Config 'load' is True but 'load_path' is not set.")
-        if not load_path.is_absolute():
-            load_path = project_root / load_path
-        with load_path.open() as params_file:
-            params = yaml.safe_load(params_file)
-        aA = np.array(params["aA"])
-        aB = np.array(params["aB"])
-        c_model = np.array(params["c"])
-        b = np.array(params["b"])
-
     if problem_name == "example":
         model = example_model.Arbbin(
             c_model,
@@ -286,6 +273,14 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
             f"Unsupported problem '{problem_name}'. Expected 'example' or 'portfolio'."
         )
 
+    if config.load:
+        load_path = config.load_path
+        if load_path is None:
+            raise ValueError("Config 'load' is True but 'load_path' is not set.")
+        if not load_path.is_absolute():
+            load_path = project_root / load_path
+        load_model_params(load_path, model)
+
     environment.reset(seed=init_env_seed)
     model.update_from_environment(environment)
 
@@ -339,7 +334,8 @@ def main():
 
     expected_ep_reward = None
     last_calced = 0
-    for _ in tqdm(range(total_iters), desc="Total Iterations"):
+    params_path = project_root / "params" / f"{plotter.run.id}.yaml"
+    for i in tqdm(range(total_iters), desc="Total Iterations"):
         if last_calced > comp_expected_every and comp_expected:
             expected_ep_reward = calc_expected_reward(
                 -original_model_params.c,
@@ -354,7 +350,7 @@ def main():
             )
             last_calced = 0
 
-        for i in tqdm(range(rollout_iters), leave=False, desc="Rollout"):
+        for j in tqdm(range(rollout_iters), leave=False, desc="Rollout"):
             last_calced += 1
             model.update_from_environment(env)
 
@@ -388,7 +384,7 @@ def main():
                     act_info,
                 )
 
-            episode_done = terminated or i == rollout_iters - 1
+            episode_done = terminated or j == rollout_iters - 1
             plotter.log_step(
                 reward=float(reward),
                 action=action_number,
@@ -422,6 +418,8 @@ def main():
         plotter.log_update(
             algorithm, update_result, original_model_params, model_params
         )
+        if i % config.save_every == 0:
+            save_model_params(params_path, model, config, i)
 
 
 if __name__ == "__main__":
