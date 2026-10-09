@@ -36,7 +36,7 @@ class DynamicAssortmentSimulator:
         self.features = rng.uniform(1.0, 10.0, (self.d + 3, self.N))
         self.features = np.vstack((self.features, np.ones((1, self.N))))
         self.d_features = np.zeros((2, self.N))
-        self.inventory = np.ones(self.N)
+        self.inventory = np.full(self.N, self.J)
         self.purchase_hist = []
         self.current_step = 1
 
@@ -69,9 +69,8 @@ class DynamicAssortmentSimulator:
 
         self.d_features = self.features[HYPE:PRICE] - old_features[HYPE:PRICE]
         if item != -1:
-            self.inventory[item] -= 1 / self.J
+            self.inventory[item] -= 1
 
-        self.inventory = np.round(self.inventory, decimals=4)
         self.current_step += 1
 
     def customer_utilities(self) -> np.ndarray:
@@ -90,6 +89,8 @@ class DynamicAssortmentSimulator:
         return float(self.prices[item])
 
     def purchase(self, assortment: np.ndarray) -> tuple[int, float]:
+        if assortment.shape != (self.N,) or np.count_nonzero(assortment) != self.K:
+            raise ValueError(f"assortment must show exactly {self.K} of {self.N} items")
         probabilities = self.choice_probabilities(self.customer_utilities(), assortment)
         rng = np.random.default_rng(self.seed + self.current_step)
         choice_idx = int(rng.choice(self.N + 1, p=probabilities))
@@ -100,7 +101,7 @@ class DynamicAssortmentSimulator:
     def is_terminated(self) -> bool:
         return (
             self.current_step > self.max_steps
-            or int(np.count_nonzero(self.inventory)) < self.K
+            or int(np.count_nonzero(self.inventory > 0)) < self.K
         )
 
     def step(self, assortment: np.ndarray) -> tuple[int, float]:
