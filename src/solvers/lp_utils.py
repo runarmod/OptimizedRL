@@ -1,8 +1,12 @@
 import numpy as np
 from scipy.optimize import linprog
 
+from src.solvers.solver_interface import BranchCond, Candidate, LPNode
 
-def normalize_linprog_duals(marginals, constraint_matrix):
+
+def normalize_linprog_duals(
+    marginals: np.ndarray | float, constraint_matrix: np.ndarray | None
+) -> np.ndarray:
     if constraint_matrix is None:
         return np.array([], dtype=float)
 
@@ -16,7 +20,7 @@ def normalize_linprog_duals(marginals, constraint_matrix):
     return duals.reshape(-1)
 
 
-def var_name_to_id(var_name):
+def var_name_to_id(var_name: int | str) -> int | str:
     """Map a variable name like "x_3" (or "t_x_3") to its index 3."""
     if isinstance(var_name, int):
         return var_name
@@ -34,7 +38,11 @@ def var_name_to_id(var_name):
     return var_name
 
 
-def solve_lp_with_conds(init_node, conds, status="lp_branch_relaxation"):
+def solve_lp_with_conds(
+    init_node: LPNode,
+    conds: list[BranchCond],
+    status: str = "lp_branch_relaxation",
+) -> Candidate | None:
     """Solve the LP relaxation of init_node with extra branching bounds.
 
     conds is a list of (var_id, op, value) with op ">=" or "<=". Returns a
