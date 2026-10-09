@@ -40,16 +40,16 @@ class DynamicAssortmentSimulator:
         hype_vector = np.ones(self.N)
 
         latest_item = self.purchase_hist[-1]
-        if latest_item != 0:
-            hype_vector[latest_item - 1] += 0.02
+        if latest_item != -1:
+            hype_vector[latest_item] += 0.02
 
         for offset in range(2, 6):
             if len(self.purchase_hist) < offset:
                 break
 
             previous_item = self.purchase_hist[-offset]
-            if previous_item != 0:
-                hype_vector[previous_item - 1] -= 0.005
+            if previous_item != -1:
+                hype_vector[previous_item] -= 0.005
 
         return hype_vector
 
@@ -59,13 +59,13 @@ class DynamicAssortmentSimulator:
 
         hype_vector = self.hype_update()
         self.features[HYPE] *= hype_vector
-        if item != 0:
-            self.features[SATISFACTION, item - 1] *= 1.01
+        if item != -1:
+            self.features[SATISFACTION, item] *= 1.01
         self.features[TIME] += 9 / self.max_steps
 
         self.d_features = self.features[HYPE:PRICE] - old_features[HYPE:PRICE]
-        if item != 0:
-            self.inventory[item - 1] -= 1 / self.J
+        if item != -1:
+            self.inventory[item] -= 1 / self.J
 
         self.inventory = np.round(self.inventory, decimals=4)
         self.current_step += 1
