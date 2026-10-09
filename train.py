@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from src.config.config_loader import load_config
 from src.config.config_models import AppConfig
-from src.gym_envs import example_env, portfolio_env
+from src.gym_envs import dap_env, example_env, portfolio_env
 from src.gym_envs.env_interface import Env
 from src.models import example_model, portfolio_model
 from src.models.model_interface import Model
@@ -162,116 +162,137 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
         E = np.full((num_cons,), 1e6)
         c_model = np.zeros((action_size,))
 
-    if problem_name == "example":
-        model = example_model.Arbbin(
-            c_model,
-            C,
-            D,
-            E,
-            aA,
-            aB,
-            b,
-            bounds,
-            integer,
-            config.model.penalty_factor,
-        )
-        environment = example_env.Arb_binary(
-            c,
-            np.zeros_like(state),
-            A,
-            B,
-            C,
-            D,
-            E,
-            config.gym.pf,
-            a_space_size=11,
-            std=config.gym.noise_std,
-        )
-        init_env_seed = 0
-    elif problem_name == "portfolio":
-        portfolio_cfg = config.portfolio_env
-        portfolio_model_cfg = config.portfolio_model
-        model = portfolio_model.PortfolioModel(
-            c_model,
-            C,
-            D,
-            E,
-            aA,
-            aB,
-            b,
-            bounds,
-            integer,
-            config.model.penalty_factor,
-            transaction_cost=portfolio_cfg.transaction_cost,
-            holding_cost=portfolio_cfg.holding_cost,
-            budget_cap=portfolio_cfg.budget_cap,
-            initial_cash=portfolio_cfg.initial_cash,
-            risk_cap=portfolio_cfg.risk_cap,
-            risk_weight=portfolio_cfg.risk_weight,
-            asset_max_position=portfolio_cfg.asset_max_position,
-            action_mode=portfolio_cfg.action_mode,
-            market_mode=portfolio_cfg.market_mode,
-            return_signal_scale=portfolio_cfg.return_signal_scale,
-            lr_mult_aA=portfolio_model_cfg.lr_mult_aA,
-            lr_mult_aB=portfolio_model_cfg.lr_mult_aB,
-            lr_mult_b=portfolio_model_cfg.lr_mult_b,
-            position_dynamics_mode=portfolio_model_cfg.position_dynamics_mode,
-            cvar_mode=portfolio_cfg.cvar_mode,
-            cvar_cap=portfolio_cfg.cvar_cap,
-            cvar_alpha=portfolio_cfg.cvar_alpha,
-            cvar_n_scenarios=portfolio_cfg.cvar_n_scenarios,
-            cvar_obj_weight=portfolio_cfg.cvar_obj_weight,
-            price_levels_mode=portfolio_cfg.price_levels_mode,
-            initial_asset_price=portfolio_cfg.initial_asset_price,
-        )
-        environment = portfolio_env.PortfolioEnv(
-            c,
-            np.zeros_like(state),
-            A,
-            B,
-            C,
-            D,
-            E,
-            config.gym.pf,
-            a_space_size=11,
-            std=config.gym.noise_std,
-            transaction_cost=portfolio_cfg.transaction_cost,
-            holding_cost=portfolio_cfg.holding_cost,
-            budget_cap=portfolio_cfg.budget_cap,
-            initial_cash=portfolio_cfg.initial_cash,
-            cash_interest_rate=portfolio_cfg.cash_interest_rate,
-            risk_cap=portfolio_cfg.risk_cap,
-            risk_weight=portfolio_cfg.risk_weight,
-            asset_max_position=portfolio_cfg.asset_max_position,
-            action_mode=portfolio_cfg.action_mode,
-            reward_mode=portfolio_cfg.reward_mode,
-            inventory_penalty=portfolio_cfg.inventory_penalty,
-            market_mode=portfolio_cfg.market_mode,
-            return_mu=portfolio_cfg.return_mu,
-            return_phi=portfolio_cfg.return_phi,
-            return_sigma=portfolio_cfg.return_sigma,
-            alpha_mode=portfolio_cfg.alpha_mode,
-            alpha_rho=portfolio_cfg.alpha_rho,
-            alpha_sigma=portfolio_cfg.alpha_sigma,
-            alpha_to_return=portfolio_cfg.alpha_to_return,
-            signal_noise_std=portfolio_cfg.signal_noise_std,
-            cvar_n_scenarios=portfolio_cfg.cvar_n_scenarios,
-            cvar_alpha=portfolio_cfg.cvar_alpha,
-            cvar_mode=portfolio_cfg.cvar_mode,
-            price_levels_mode=portfolio_cfg.price_levels_mode,
-            initial_asset_price=portfolio_cfg.initial_asset_price,
-            min_asset_price=portfolio_cfg.min_asset_price,
-            seed_behavior="modern" if configured_seed >= 5 else "legacy",
-        )
-        init_env_seed = (
-            0
-            if force_portfolio_zero_init
-            else (effective_seed if configured_seed >= 5 else 0)
-        )
-    else:
-        raise ValueError(
-            f"Unsupported problem '{problem_name}'. Expected 'example' or 'portfolio'."
-        )
+    match problem_name:
+        case "example":
+            model = example_model.Arbbin(
+                c_model,
+                C,
+                D,
+                E,
+                aA,
+                aB,
+                b,
+                bounds,
+                integer,
+                config.model.penalty_factor,
+            )
+            environment = example_env.Arb_binary(
+                c,
+                np.zeros_like(state),
+                A,
+                B,
+                C,
+                D,
+                E,
+                config.gym.pf,
+                a_space_size=11,
+                std=config.gym.noise_std,
+            )
+            init_env_seed = 0
+        case "portfolio":
+            portfolio_cfg = config.portfolio_env
+            portfolio_model_cfg = config.portfolio_model
+            model = portfolio_model.PortfolioModel(
+                c_model,
+                C,
+                D,
+                E,
+                aA,
+                aB,
+                b,
+                bounds,
+                integer,
+                config.model.penalty_factor,
+                transaction_cost=portfolio_cfg.transaction_cost,
+                holding_cost=portfolio_cfg.holding_cost,
+                budget_cap=portfolio_cfg.budget_cap,
+                initial_cash=portfolio_cfg.initial_cash,
+                risk_cap=portfolio_cfg.risk_cap,
+                risk_weight=portfolio_cfg.risk_weight,
+                asset_max_position=portfolio_cfg.asset_max_position,
+                action_mode=portfolio_cfg.action_mode,
+                market_mode=portfolio_cfg.market_mode,
+                return_signal_scale=portfolio_cfg.return_signal_scale,
+                lr_mult_aA=portfolio_model_cfg.lr_mult_aA,
+                lr_mult_aB=portfolio_model_cfg.lr_mult_aB,
+                lr_mult_b=portfolio_model_cfg.lr_mult_b,
+                position_dynamics_mode=portfolio_model_cfg.position_dynamics_mode,
+                cvar_mode=portfolio_cfg.cvar_mode,
+                cvar_cap=portfolio_cfg.cvar_cap,
+                cvar_alpha=portfolio_cfg.cvar_alpha,
+                cvar_n_scenarios=portfolio_cfg.cvar_n_scenarios,
+                cvar_obj_weight=portfolio_cfg.cvar_obj_weight,
+                price_levels_mode=portfolio_cfg.price_levels_mode,
+                initial_asset_price=portfolio_cfg.initial_asset_price,
+            )
+            environment = portfolio_env.PortfolioEnv(
+                c,
+                np.zeros_like(state),
+                A,
+                B,
+                C,
+                D,
+                E,
+                config.gym.pf,
+                a_space_size=11,
+                std=config.gym.noise_std,
+                transaction_cost=portfolio_cfg.transaction_cost,
+                holding_cost=portfolio_cfg.holding_cost,
+                budget_cap=portfolio_cfg.budget_cap,
+                initial_cash=portfolio_cfg.initial_cash,
+                cash_interest_rate=portfolio_cfg.cash_interest_rate,
+                risk_cap=portfolio_cfg.risk_cap,
+                risk_weight=portfolio_cfg.risk_weight,
+                asset_max_position=portfolio_cfg.asset_max_position,
+                action_mode=portfolio_cfg.action_mode,
+                reward_mode=portfolio_cfg.reward_mode,
+                inventory_penalty=portfolio_cfg.inventory_penalty,
+                market_mode=portfolio_cfg.market_mode,
+                return_mu=portfolio_cfg.return_mu,
+                return_phi=portfolio_cfg.return_phi,
+                return_sigma=portfolio_cfg.return_sigma,
+                alpha_mode=portfolio_cfg.alpha_mode,
+                alpha_rho=portfolio_cfg.alpha_rho,
+                alpha_sigma=portfolio_cfg.alpha_sigma,
+                alpha_to_return=portfolio_cfg.alpha_to_return,
+                signal_noise_std=portfolio_cfg.signal_noise_std,
+                cvar_n_scenarios=portfolio_cfg.cvar_n_scenarios,
+                cvar_alpha=portfolio_cfg.cvar_alpha,
+                cvar_mode=portfolio_cfg.cvar_mode,
+                price_levels_mode=portfolio_cfg.price_levels_mode,
+                initial_asset_price=portfolio_cfg.initial_asset_price,
+                min_asset_price=portfolio_cfg.min_asset_price,
+                seed_behavior="modern" if configured_seed >= 5 else "legacy",
+            )
+            init_env_seed = (
+                0
+                if force_portfolio_zero_init
+                else (effective_seed if configured_seed >= 5 else 0)
+            )
+        case "dap":
+            dap_cfg = config.dap_env
+            first_seed, last_seed = dap_cfg.train_seeds
+            environment = dap_env.DynamicAssortmentEnvironment(
+                episode_seeds=range(first_seed, last_seed + 1),
+                sim=dap_env.DynamicAssortmentSimulator(
+                    n_items=dap_cfg.n_items,
+                    n_static_features=2,
+                    assortment_size=dap_cfg.assortment_size,
+                    initial_inventory=dap_cfg.initial_inventory,
+                    max_steps=dap_cfg.max_steps,
+                ),
+            )
+            # No seed: automatically uses rolling seed per episode
+            init_env_seed = None
+            # TODO: build the DAP model here once it exists
+            raise NotImplementedError(
+                "Problem 'dap' has an environment but no model yet."
+            )
+        case _:
+            raise ValueError(
+                f"Unsupported problem '{problem_name}'. "
+                "Expected 'example', 'portfolio' or 'dap'."
+            )
 
     if config.load:
         load_path = config.load_path
