@@ -1,8 +1,10 @@
 import gymnasium as gym
 import numpy as np
 
+from src.gym_envs.env_interface import Env
 
-class Arb_binary(gym.Env):
+
+class Arb_binary(Env):
     def __init__(self, c, p, A, B, C, D, E, pf, a_space_size, noise=False, std=0):
         self.c = c
         self.A = A
