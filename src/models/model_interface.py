@@ -9,6 +9,10 @@ class ParameterSnapshot(ABC):
     def change_metrics(self, original: ParameterSnapshot) -> dict[str, float]:
         """Squared change of each parameter group relative to ``original``."""
 
+    @abstractmethod
+    def arrays(self) -> dict[str, np.ndarray]:
+        """Parameter arrays keyed by the name of the model attribute holding them."""
+
 
 @dataclass(frozen=True)
 class ModelParameters(ParameterSnapshot):
@@ -25,6 +29,9 @@ class ModelParameters(ParameterSnapshot):
             "b_change": ((original.b - self.b) ** 2).sum(),
         }
 
+    def arrays(self) -> dict[str, np.ndarray]:
+        return {"aA": self.aA, "aB": self.aB, "b": self.b, "c": self.c}
+
 
 @dataclass(frozen=True)
 class VectorModelParameters(ParameterSnapshot):
@@ -38,6 +45,9 @@ class VectorModelParameters(ParameterSnapshot):
         for i, value in enumerate(self.values):
             metrics[f"{self.name}_{i}"] = float(value)
         return metrics
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        return {self.name: self.values}
 
 
 class Model(ABC):

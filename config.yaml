@@ -32,7 +32,7 @@ training:
   # options: vanilla_gradient | ppo
   algorithm: "ppo"
   # options: scip | scip_brute | bnb
-  solver: "scip_brute"
+  solver: "scip"
 
 model:
   state_size: 6
@@ -132,3 +132,4 @@ explicit_sol_time: 4
 comp_expected: False
 comp_expected_every: 100
 terminal_log_every: 100
+save_every: 5
