@@ -5,6 +5,8 @@ from math import ceil, floor
 import numpy as np
 from scipy.optimize import linprog
 
+from src.solvers.lp_utils import normalize_linprog_duals
+
 # Node dictionary template
 
 example_node = {
@@ -16,20 +18,6 @@ example_node = {
     "bounds": None,
     "integer": None,
 }
-
-
-def _normalize_linprog_duals(marginals, constraint_matrix):
-    if constraint_matrix is None:
-        return np.array([], dtype=float)
-
-    duals = np.asarray(marginals, dtype=float)
-    if duals.ndim == 0:
-        n_constraints = constraint_matrix.shape[0]
-        if n_constraints == 0:
-            return np.array([], dtype=float)
-        return duals.reshape(1)
-
-    return duals.reshape(-1)
 
 
 class BranchAndBound:
@@ -336,10 +324,10 @@ class BranchAndBoundRevamped:
                 {
                     "fun": res.fun,
                     "x": res.x,
-                    "eqlin": _normalize_linprog_duals(
+                    "eqlin": normalize_linprog_duals(
                         res.eqlin.marginals, init_node["A_eq"]
                     ),
-                    "ineqlin": _normalize_linprog_duals(
+                    "ineqlin": normalize_linprog_duals(
                         res.ineqlin.marginals, init_node["A_ub"]
                     ),
                     "lower": res.lower.marginals,
@@ -449,10 +437,10 @@ class BranchAndBoundRevamped:
                         {
                             "fun": res.fun,
                             "x": res.x,
-                            "eqlin": _normalize_linprog_duals(
+                            "eqlin": normalize_linprog_duals(
                                 res.eqlin.marginals, init_node["A_eq"]
                             ),
-                            "ineqlin": _normalize_linprog_duals(
+                            "ineqlin": normalize_linprog_duals(
                                 res.ineqlin.marginals, init_node["A_ub"]
                             ),
                             "lower": res.lower.marginals,
@@ -530,10 +518,10 @@ class BranchAndBoundRevamped:
                     {
                         "fun": res.fun,
                         "x": res.x,
-                        "eqlin": _normalize_linprog_duals(
+                        "eqlin": normalize_linprog_duals(
                             res.eqlin.marginals, init_node["A_eq"]
                         ),
-                        "ineqlin": _normalize_linprog_duals(
+                        "ineqlin": normalize_linprog_duals(
                             res.ineqlin.marginals, init_node["A_ub"]
                         ),
                         "lower": res.lower.marginals,

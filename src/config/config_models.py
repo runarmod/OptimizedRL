@@ -10,10 +10,13 @@ class StrictConfig(BaseModel):
 
 class ScipConfig(StrictConfig):
     verbose: bool = Field(description="Show SCIP solver output.")
-
-
-class ScipBruteConfig(StrictConfig):
-    verbose: bool = Field(description="Show SCIP solver output.")
+    pool_mode: Literal["leaves", "mixed"] = Field(
+        description=(
+            "How the candidate pool is built: 'leaves' uses the leaf nodes of the "
+            "explored tree; 'mixed' combines the root LP, the best integer solution, "
+            "branch-path LPs and node LPs."
+        )
+    )
     disable_heuristics: bool = Field(description="Disable SCIP primal heuristics.")
     disable_presolve: bool = Field(description="Disable SCIP presolving.")
     disable_separating: bool = Field(
@@ -45,7 +48,7 @@ class TrainingConfig(StrictConfig):
     algorithm: Literal["vanilla_gradient", "ppo"] = Field(
         description="Training algorithm."
     )
-    solver: Literal["scip", "scip_brute", "bnb"] = Field(
+    solver: Literal["scip", "bnb"] = Field(
         description="MILP solver implementation."
     )
 
@@ -239,7 +242,6 @@ class AppConfig(StrictConfig):
     load_path: Path | None = Field(None, description="Path to saved model parameters.")
     device: str = Field(description="Requested Torch device, such as cpu or cuda.")
     scip: ScipConfig
-    scip_brute: ScipBruteConfig
     training: TrainingConfig
     model: ModelConfig
     gym: GymConfig

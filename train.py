@@ -11,7 +11,7 @@ from src.gym_envs import example_env, portfolio_env
 from src.gym_envs.env_interface import Env
 from src.models import example_model, portfolio_model
 from src.models.model_interface import Model
-from src.solvers import bnb, scip, scip_brute
+from src.solvers import bnb, scip
 from src.solvers.solver_interface import Solver
 from src.training_algorithm.ppo.ppo import PPO_MILP_Agent
 from src.training_algorithm.training_algorithm_interface import (
@@ -84,26 +84,24 @@ def build_solver(config: AppConfig):
             return bnb.BranchAndBoundRevamped()
 
         case "scip":
-            return scip.SCIPSolver(verbose=config.scip.verbose)
-
-        case "scip_brute":
-            return scip_brute.SCIPSolver(
-                verbose=config.scip_brute.verbose,
-                disable_heuristics=config.scip_brute.disable_heuristics,
-                disable_presolve=config.scip_brute.disable_presolve,
-                disable_separating=config.scip_brute.disable_separating,
-                disable_propagation=config.scip_brute.disable_propagation,
-                disable_conflict_analysis=config.scip_brute.disable_conflict_analysis,
-                disable_symmetry=config.scip_brute.disable_symmetry,
-                prefer_most_fractional_branching=config.scip_brute.prefer_most_fractional_branching,
-                prefer_breadth_first=config.scip_brute.prefer_breadth_first,
-                tighten_integer_projected_bounds=config.scip_brute.tighten_integer_projected_bounds,
-                mimic_bnb_pool_filter=config.scip_brute.mimic_bnb_pool_filter,
-                prefer_depth_first=config.scip_brute.prefer_depth_first,
+            return scip.SCIPSolver(
+                verbose=config.scip.verbose,
+                pool_mode=config.scip.pool_mode,
+                disable_heuristics=config.scip.disable_heuristics,
+                disable_presolve=config.scip.disable_presolve,
+                disable_separating=config.scip.disable_separating,
+                disable_propagation=config.scip.disable_propagation,
+                disable_conflict_analysis=config.scip.disable_conflict_analysis,
+                disable_symmetry=config.scip.disable_symmetry,
+                prefer_most_fractional_branching=config.scip.prefer_most_fractional_branching,
+                prefer_breadth_first=config.scip.prefer_breadth_first,
+                tighten_integer_projected_bounds=config.scip.tighten_integer_projected_bounds,
+                mimic_bnb_pool_filter=config.scip.mimic_bnb_pool_filter,
+                prefer_depth_first=config.scip.prefer_depth_first,
             )
 
     raise ValueError(
-        "training.solver must be one of 'scip', 'scip_brute', or 'bnb'. "
+        "training.solver must be one of 'scip' or 'bnb'. "
         f"Got '{config.training.solver}'."
     )
 
