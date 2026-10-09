@@ -71,21 +71,21 @@ class Model(ABC):
             c=self.c.copy(),
         )
 
+    POLICY_PARAM_ORDER = ("c", "aA", "aB", "b")
+
     def get_policy_params(self) -> np.ndarray:
-        """Flat vector of the parameters trained by PPO."""
+        """Flat vector of the parameters trained by PPO, in POLICY_PARAM_ORDER."""
         return np.concatenate(
             [
-                np.asarray(self.aA, dtype=np.float32).reshape(-1),
-                np.asarray(self.aB, dtype=np.float32).reshape(-1),
-                np.asarray(self.b, dtype=np.float32).reshape(-1),
-                np.asarray(self.c, dtype=np.float32).reshape(-1),
+                np.asarray(getattr(self, name), dtype=np.float32).reshape(-1)
+                for name in self.POLICY_PARAM_ORDER
             ]
         )
 
     def set_policy_params(self, theta: np.ndarray) -> None:
         """Inverse of ``get_policy_params``."""
         idx = 0
-        for name in ("aA", "aB", "b", "c"):
+        for name in self.POLICY_PARAM_ORDER:
             shape = getattr(self, name).shape
             size = int(np.prod(shape))
             setattr(self, name, theta[idx : idx + size].reshape(shape).astype(float))

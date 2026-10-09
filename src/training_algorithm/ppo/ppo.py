@@ -152,7 +152,7 @@ class PPOMILPAgent(TrainingAlgorithm):
     """PPO agent for MILP candidate-set action selection.
 
     Policy parameterization:
-    - Learned MILP parameters theta = (aA, aB, b, c).
+    - Learned MILP parameters theta = (c, aA, aB, b).
     - Action probabilities use a fixed-temperature softmax over objective values.
     - PPO updates use a first-order linearization of objective values around theta_old.
 
@@ -333,9 +333,12 @@ class PPOMILPAgent(TrainingAlgorithm):
             ],
             dtype=np.float32,
         )
-        # Model gradients may include extra components (e.g. c); PPO theta uses only (aA, aB, b).
+        # The gradient must have the same layout as theta (Model.POLICY_PARAM_ORDER).
         if theta_grads.shape[1] != self.theta_dim:
-            theta_grads = theta_grads[:, -self.theta_dim :]
+            raise ValueError(
+                f"lagrange_gradient returned {theta_grads.shape[1]} components, "
+                f"but theta has {self.theta_dim}."
+            )
 
         state_t = _as_state_tensor(state, self.device)
         value = float(self.value_net(state_t.unsqueeze(0)).squeeze(0).item())
