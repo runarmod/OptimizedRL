@@ -1,28 +1,35 @@
 import numpy as np
 
-# Rows of the feature matrix, counted from the end so they hold for any d
-# (the first d rows are the static features).
+# Rows of the feature matrix, counted from the end so they hold for any number
+# of static features (which come first).
 HYPE, SATISFACTION, PRICE, TIME = -4, -3, -2, -1
 
-# Hidden customer model - assumes d = 2
+# Hidden customer model - assumes 2 static features
 CUSTOMER_MODEL = np.array([0.3, 0.5, 0.6, -0.4, -0.8, 0.0])
 
 
 class DynamicAssortmentSimulator:
     def __init__(
         self,
-        N: int,
-        d: int,
-        K: int,
-        J: int,
+        n_items: int,
+        n_static_features: int,
+        assortment_size: int,
+        initial_inventory: int,
         max_steps: int = 80,
         seed: int = 0,
     ) -> None:
-        self.N = N  # Number of items
-        assert d == 2, "The CUSTOMER_MODEL only works for d = 2"
-        self.d = d  # Dimension of feature vectors (in addition to hype, satisfaction, and price)
-        self.K = K  # Assortment size constraint
-        self.J = J  # Initial inventory
+        # Number of items to choose from (N in SRL codebase)
+        self.n_items = n_items
+
+        # Dimension of feature vectors (in addition to hype, satisfaction, and price) (d in SRL codebase)
+        assert n_static_features == 2, "CUSTOMER_MODEL needs 2 static features"
+        self.n_static_features = n_static_features
+
+        # Assortment size constraint, i.e. how many items to show (K in SRL codebase)
+        self.assortment_size = assortment_size
+
+        # Initial inventory of each item (J in SRL codebase)
+        self.initial_inventory = initial_inventory
         self.max_steps = max_steps  # Steps per history
         self.purchase_hist: list[int] = []
         self.current_step = 0
@@ -33,15 +40,17 @@ class DynamicAssortmentSimulator:
             self.seed = seed
 
         rng = np.random.default_rng(self.seed)
-        self.features = rng.uniform(1.0, 10.0, (self.d + 3, self.N))
-        self.features = np.vstack((self.features, np.ones((1, self.N))))
-        self.d_features = np.zeros((2, self.N))
-        self.inventory = np.full(self.N, self.J)
+        self.features = rng.uniform(
+            1.0, 10.0, (self.n_static_features + 3, self.n_items)
+        )
+        self.features = np.vstack((self.features, np.ones((1, self.n_items))))
+        self.d_features = np.zeros((2, self.n_items))
+        self.inventory = np.full(self.n_items, self.initial_inventory)
         self.purchase_hist = []
         self.current_step = 1
 
     def hype_update(self) -> np.ndarray:
-        hype_vector = np.ones(self.N)
+        hype_vector = np.ones(self.n_items)
 
         latest_item = self.purchase_hist[-1]
         if latest_item != -1:
@@ -89,19 +98,25 @@ class DynamicAssortmentSimulator:
         return float(self.prices[item])
 
     def purchase(self, assortment: np.ndarray) -> tuple[int, float]:
-        if assortment.shape != (self.N,) or np.count_nonzero(assortment) != self.K:
-            raise ValueError(f"assortment must show exactly {self.K} of {self.N} items")
+        if (
+            assortment.shape != (self.n_items,)
+            or np.count_nonzero(assortment) != self.assortment_size
+        ):
+            raise ValueError(
+                f"assortment must show exactly {self.assortment_size}"
+                f" of {self.n_items} items"
+            )
         probabilities = self.choice_probabilities(self.customer_utilities(), assortment)
         rng = np.random.default_rng(self.seed + self.current_step)
-        choice_idx = int(rng.choice(self.N + 1, p=probabilities))
-        if choice_idx == self.N:
+        choice_idx = int(rng.choice(self.n_items + 1, p=probabilities))
+        if choice_idx == self.n_items:
             return -1, 0.0
         return choice_idx, self.price(choice_idx)
 
     def is_terminated(self) -> bool:
         return (
             self.current_step > self.max_steps
-            or int(np.count_nonzero(self.inventory > 0)) < self.K
+            or int(np.count_nonzero(self.inventory > 0)) < self.assortment_size
         )
 
     def step(self, assortment: np.ndarray) -> tuple[int, float]:
