@@ -19,7 +19,7 @@ class ModelParameters(ParameterSnapshot):
 
     def change_metrics(self, original: ModelParameters) -> dict[str, float]:
         return {
-            "c_change": ((-original.c - self.c) ** 2).sum(),
+            "c_change": ((original.c - self.c) ** 2).sum(),
             "aA_change": ((original.aA - self.aA) ** 2).sum(),
             "aB_change": ((original.aB - self.aB) ** 2).sum(),
             "b_change": ((original.b - self.b) ** 2).sum(),
