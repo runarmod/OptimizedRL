@@ -14,7 +14,7 @@ device: "cuda"
 scip:
   verbose: false
   # options: leaves | mixed
-  pool_mode: "leaves"
+  pool_mode: "mixed"
   disable_heuristics: true
   disable_presolve: true
   disable_separating: true
