@@ -4,6 +4,9 @@ import numpy as np
 # (the first d rows are the static features).
 HYPE, SATISFACTION, PRICE, TIME = -4, -3, -2, -1
 
+# Hidden customer model - assumes d = 2
+CUSTOMER_MODEL = np.array([0.3, 0.5, 0.6, -0.4, -0.8, 0.0])
+
 
 class DynamicAssortmentSimulator:
     def __init__(
@@ -14,8 +17,9 @@ class DynamicAssortmentSimulator:
         J: int,
         max_steps: int = 80,
         seed: int = 0,
-    ):
+    ) -> None:
         self.N = N  # Number of items
+        assert d == 2, "The CUSTOMER_MODEL only works for d = 2"
         self.d = d  # Dimension of feature vectors (in addition to hype, satisfaction, and price)
         self.K = K  # Assortment size constraint
         self.J = J  # Initial inventory
@@ -36,7 +40,7 @@ class DynamicAssortmentSimulator:
         self.purchase_hist = []
         self.current_step = 1
 
-    def hype_update(self):
+    def hype_update(self) -> np.ndarray:
         hype_vector = np.ones(self.N)
 
         latest_item = self.purchase_hist[-1]
@@ -53,7 +57,7 @@ class DynamicAssortmentSimulator:
 
         return hype_vector
 
-    def apply_purchase(self, item: int):
+    def apply_purchase(self, item: int) -> None:
         old_features = np.copy(self.features)
         self.purchase_hist.append(item)
 
@@ -70,8 +74,36 @@ class DynamicAssortmentSimulator:
         self.inventory = np.round(self.inventory, decimals=4)
         self.current_step += 1
 
-    def is_terminated(self):
+    def customer_utilities(self) -> np.ndarray:
+        return CUSTOMER_MODEL @ self.features
+
+    @staticmethod
+    def choice_probabilities(utility: np.ndarray, assortment: np.ndarray) -> np.ndarray:
+        weight = np.exp(utility) * assortment
+        return np.append(weight, 1) / (1 + weight.sum())
+
+    @property
+    def prices(self) -> np.ndarray:
+        return self.features[PRICE]
+
+    def price(self, item: int) -> float:
+        return float(self.prices[item])
+
+    def purchase(self, assortment: np.ndarray) -> tuple[int, float]:
+        probabilities = self.choice_probabilities(self.customer_utilities(), assortment)
+        rng = np.random.default_rng(self.seed + self.current_step)
+        choice_idx = int(rng.choice(self.N + 1, p=probabilities))
+        if choice_idx == self.N:
+            return -1, 0.0
+        return choice_idx, self.price(choice_idx)
+
+    def is_terminated(self) -> bool:
         return (
             self.current_step > self.max_steps
-            or np.count_nonzero(self.inventory) < self.K
+            or int(np.count_nonzero(self.inventory)) < self.K
         )
+
+    def step(self, assortment: np.ndarray) -> tuple[int, float]:
+        item, revenue = self.purchase(assortment)
+        self.apply_purchase(item)
+        return item, revenue
