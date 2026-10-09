@@ -1,8 +1,11 @@
-import gymnasium as gym
 import numpy as np
 
+# Rows of the feature matrix, counted from the end so they hold for any d
+# (the first d rows are the static features).
+HYPE, SATISFACTION, PRICE, TIME = -4, -3, -2, -1
 
-class DynamicAssortmentEnvironment(gym.Env):
+
+class DynamicAssortmentSimulator:
     def __init__(
         self,
         N: int,
@@ -11,14 +14,12 @@ class DynamicAssortmentEnvironment(gym.Env):
         J: int,
         max_steps: int = 80,
         seed: int = 0,
-        dynamic: bool = True,
     ):
         self.N = N  # Number of items
-        self.d = d  # Dimension of feature vectors
+        self.d = d  # Dimension of feature vectors (in addition to hype, satisfaction, and price)
         self.K = K  # Assortment size constraint
         self.J = J  # Initial inventory
         self.max_steps = max_steps  # Steps per history
-        self.dynamic = dynamic  # Endogeneity of the customer model
         self.purchase_hist: list[int] = []
         self.current_step = 0
         self.seed = seed
@@ -26,13 +27,13 @@ class DynamicAssortmentEnvironment(gym.Env):
     def reset(self, seed: int | None = None) -> None:
         if seed is not None:
             self.seed = seed
-            super().reset(seed=seed)
 
         rng = np.random.default_rng(self.seed)
         self.features = rng.uniform(1.0, 10.0, (self.d + 3, self.N))
         self.features = np.vstack((self.features, np.ones((1, self.N))))
         self.d_features = np.zeros((2, self.N))
         self.inventory = np.ones(self.N)
+        self.purchase_hist = []
         self.current_step = 1
 
     def hype_update(self):
@@ -52,29 +53,25 @@ class DynamicAssortmentEnvironment(gym.Env):
 
         return hype_vector
 
-    def step(self, features: np.ndarray, inventory: np.ndarray, item: int):
-        old_features = np.copy(features)
+    def apply_purchase(self, item: int):
+        old_features = np.copy(self.features)
         self.purchase_hist.append(item)
 
-        if self.dynamic:
-            hype_vector = self.hype_update()
-            features[2, :] *= hype_vector
-            if item != 0:
-                features[3, item - 1] *= 1.01
-            features[5, :] += 9 / self.max_steps
-
-        d_features = features[2:4, :] - old_features[2:4, :]
+        hype_vector = self.hype_update()
+        self.features[HYPE] *= hype_vector
         if item != 0:
-            inventory[item - 1] -= 1 / self.J
+            self.features[SATISFACTION, item - 1] *= 1.01
+        self.features[TIME] += 9 / self.max_steps
 
-        inventory = np.round(inventory, decimals=4)
+        self.d_features = self.features[HYPE:PRICE] - old_features[HYPE:PRICE]
+        if item != 0:
+            self.inventory[item - 1] -= 1 / self.J
+
+        self.inventory = np.round(self.inventory, decimals=4)
         self.current_step += 1
-        return features, d_features, inventory
 
-
-if __name__ == "__main__":
-    dap = DynamicAssortmentEnvironment(20, 2, 3, 200)
-    dap.reset()
-    print(dap.features)
-    dap.step(dap.features, dap.inventory, 20)
-    print(dap.features)
+    def is_terminated(self):
+        return (
+            self.current_step > self.max_steps
+            or np.count_nonzero(self.inventory) < self.K
+        )
