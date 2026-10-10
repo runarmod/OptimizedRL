@@ -167,6 +167,16 @@ class PortfolioEnvConfig(StrictConfig):
     min_asset_price: float = Field(gt=0, description="Minimum asset price.")
 
 
+class DapEnvConfig(StrictConfig):
+    n_items: int = Field(gt=0, description="Number of items.")
+    assortment_size: int = Field(gt=0, description="Items shown per step.")
+    initial_inventory: int = Field(gt=0, description="Initial stock of each item.")
+    max_steps: int = Field(gt=0, description="Steps per episode.")
+    train_seeds: tuple[int, int] = Field(
+        description="Inclusive range of episode seeds cycled through in training."
+    )
+
+
 class PpoConfig(StrictConfig):
     nn_sample: bool = Field(
         description="PPO override for fractional-solution sampling."
@@ -228,7 +238,7 @@ class AppConfig(StrictConfig):
     wandb_mode: Literal["online", "offline", "disabled", "shared"] = Field(
         description="Weights & Biases execution mode."
     )
-    problem: Literal["example", "portfolio"] = Field(
+    problem: Literal["example", "portfolio", "dap"] = Field(
         description="Optimization problem implementation."
     )
     portfolio_zero_init_seeds: list[int] = Field(
@@ -246,6 +256,7 @@ class AppConfig(StrictConfig):
     plotting: PlottingConfig
     portfolio_model: PortfolioModelConfig
     portfolio_env: PortfolioEnvConfig
+    dap_env: DapEnvConfig
     ppo: PpoConfig
     vanilla_gradient: VanillaGradientConfig
     total_iters: int = Field(gt=0, description="Total outer training iterations.")

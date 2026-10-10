@@ -1,8 +1,10 @@
 import gymnasium as gym
 import numpy as np
 
+from src.gym_envs.env_interface import Env
 
-class PortfolioEnv(gym.Env):
+
+class PortfolioEnv(Env):
     def __init__(
         self,
         c,
