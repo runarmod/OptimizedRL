@@ -2,7 +2,7 @@ name: "Seed1 gradient"
 
 wandb_mode: "online"
 
-problem: "portfolio"
+problem: "dap"
 portfolio_zero_init_seeds: [5, 6, 7]
 
 numpy_seed: 5

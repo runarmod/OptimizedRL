@@ -69,6 +69,14 @@ class Model(ABC):
     def get_LP_formulation(self):
         pass
 
+    def complete_candidates(self, sol_pool: list[dict]) -> list[dict]:
+        """Candidates the policy chooses between, made from the solver's pool.
+
+        By default the solver's candidates are used as they are, and a fathomed
+        candidate is completed to an action only after it has been chosen.
+        """
+        return sol_pool
+
     @abstractmethod
     def lagrange_gradient(self):
         pass

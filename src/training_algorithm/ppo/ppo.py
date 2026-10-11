@@ -301,6 +301,7 @@ class PPOMILPAgent(TrainingAlgorithm):
                 info={"n_sols": 0},
                 store=False,
             )
+        sol_pool = self.model.complete_candidates(sol_pool)
 
         obj_vals = np.asarray([sol["fun"] for sol in sol_pool], dtype=np.float32)
         dist = self._dist_from_obj_vals(obj_vals)

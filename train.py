@@ -8,7 +8,7 @@ from src.config.config_loader import load_config
 from src.config.config_models import AppConfig
 from src.gym_envs import dap_env, example_env, portfolio_env
 from src.gym_envs.env_interface import Env
-from src.models import example_model, portfolio_model
+from src.models import dap_model, example_model, portfolio_model
 from src.models.model_interface import Model
 from src.solvers import bnb, scip, scip_brute
 from src.solvers.solver_interface import Solver
@@ -284,9 +284,15 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
             )
             # No seed: automatically uses rolling seed per episode
             init_env_seed = None
-            # TODO: build the DAP model here once it exists
-            raise NotImplementedError(
-                "Problem 'dap' has an environment but no model yet."
+            n_features = dap_model.N_FEATURES
+            theta = np.random.uniform(
+                0, 0.1, size=2 * n_features + num_pieces * (2 * n_features + 1)
+            )
+            model = dap_model.DapModel(
+                theta,
+                n_items=dap_cfg.n_items,
+                assortment_size=dap_cfg.assortment_size,
+                n_value_pieces=num_pieces,
             )
         case _:
             raise ValueError(
