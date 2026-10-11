@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +23,7 @@ from src.training_algorithm.vanilla_gradient.vanilla_gradient import (
 )
 from src.utils.calc_expected import calc_expected_reward
 from src.utils.checkpoint import load_model_params, save_model_params
+from src.utils.evaluation import best_action, run_episode
 from src.utils.plotting import Plotter
 
 
@@ -327,10 +329,81 @@ def sanitize_env_action(env, action):
     return action_arr
 
 
+def validate_dap(model: Model, solver: Solver, config: AppConfig) -> dict[str, float]:
+    """Mean revenue of the most probable actions on the first training and
+    validation episodes, which the SRL paper selects its best model by."""
+    dap_cfg = config.dap_env
+    env = build_dap_env(config)
+
+    def act() -> np.ndarray:
+        model.update_from_environment(env)
+        return sanitize_env_action(env, best_action(model, solver))
+
+    # Episodes reseed numpy, which must not change the course of training.
+    rng_state = np.random.get_state()
+    try:
+        revenue = {}
+        for split, first_seed in (
+            ("train", dap_cfg.train_seeds[0]),
+            ("val", dap_env.VALIDATION_FIRST_SEED),
+        ):
+            seeds = range(first_seed, first_seed + dap_cfg.validate_episodes)
+            episodes = [
+                run_episode(env, act, seed, dap_cfg.max_steps)["ep_reward"]
+                for seed in seeds
+            ]
+            revenue[split] = float(np.mean(episodes))
+    finally:
+        np.random.set_state(rng_state)
+    return revenue
+
+
+def validate_and_keep_best(
+    model: Model,
+    solver: Solver,
+    config: AppConfig,
+    plotter: Plotter,
+    best_path: Path,
+    completed_iters: int,
+    best_score: float,
+) -> float:
+    """Validate the model and save it to best_path if it is the best so far.
+
+    As in the SRL paper, the score is the mean of the training and validation
+    revenue, and ties go to the later model. Returns the best score.
+    """
+    revenue = validate_dap(model, solver, config)
+    score = (revenue["train"] + revenue["val"]) / 2
+    plotter.run.log(
+        {
+            "validation/train_revenue": revenue["train"],
+            "validation/val_revenue": revenue["val"],
+            "validation/score": score,
+        }
+    )
+    is_best = score >= best_score
+    tqdm.write(
+        f"Validation after {completed_iters} iterations: train {revenue['train']:.1f},"
+        f" val {revenue['val']:.1f}{' (best)' if is_best else ''}"
+    )
+    if not is_best:
+        return best_score
+    save_model_params(best_path, model, config, completed_iters)
+    return score
+
+
 def main():
     project_root = Path(__file__).resolve().parent
-    config_path = project_root / "config.yaml"
-    config = load_config(config_path)
+    parser = argparse.ArgumentParser(description="Train a MILP policy.")
+    parser.add_argument("--config", type=Path, default=project_root / "config.yaml")
+    parser.add_argument(
+        "--params-dir",
+        type=Path,
+        default=project_root / "params",
+        help="Directory the trained parameters are saved in.",
+    )
+    args = parser.parse_args()
+    config = load_config(args.config)
     runtime_device = resolve_runtime_device(config.device)
 
     model, env = build_model_and_env(config, project_root)
@@ -366,8 +439,16 @@ def main():
 
     expected_ep_reward = None
     last_calced = 0
-    params_path = project_root / "params" / f"{plotter.run.id}.yaml"
+    params_path = args.params_dir / f"{plotter.run.id}.yaml"
+    best_params_path = args.params_dir / f"{plotter.run.id}_best.yaml"
+    validate_every = config.dap_env.validate_every if config.problem == "dap" else 0
+    best_score = -np.inf
     for i in tqdm(range(total_iters), desc="Total Iterations"):
+        if validate_every and i % validate_every == 0:
+            best_score = validate_and_keep_best(
+                model, solver, config, plotter, best_params_path, i, best_score
+            )
+
         if last_calced > comp_expected_every and comp_expected:
             expected_ep_reward = calc_expected_reward(
                 -original_model_params.c,
@@ -452,6 +533,12 @@ def main():
         )
         if i % config.save_every == 0:
             save_model_params(params_path, model, config, i)
+
+    save_model_params(params_path, model, config, total_iters)
+    if validate_every:
+        validate_and_keep_best(
+            model, solver, config, plotter, best_params_path, total_iters, best_score
+        )
 
 
 if __name__ == "__main__":

@@ -18,6 +18,10 @@ CUSTOMER_MODEL = np.array([0.3, 0.5, 0.6, -0.4, -0.8, 0.0])
 # satisfaction, and their change since the start of the episode.
 N_ITEM_FEATURES = len(CUSTOMER_MODEL) + 2 + 2
 
+# Episode seeds of the SRL codebase: training 1-100, validation 1001-1100 and
+# testing 2001-2100.
+VALIDATION_FIRST_SEED = 1001
+
 
 class DynamicAssortmentSimulator:
     def __init__(

@@ -175,6 +175,17 @@ class DapEnvConfig(StrictConfig):
     train_seeds: tuple[int, int] = Field(
         description="Inclusive range of episode seeds cycled through in training."
     )
+    validate_every: int = Field(
+        0,
+        ge=0,
+        description="Training iterations between validations that keep the best "
+        "model, as in the SRL paper (0 disables).",
+    )
+    validate_episodes: int = Field(
+        30,
+        gt=0,
+        description="Train and validation episodes per validation (SRL paper: 30).",
+    )
 
 
 class PpoConfig(StrictConfig):

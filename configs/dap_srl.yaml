@@ -1,0 +1,158 @@
+# DAP training that follows the protocol of the SRL paper (Hoppe et al., 2025)
+# so the result compares with its Table 11, see scripts/run_srl_comparison.sh:
+#   - 200 training episodes of 80 steps (total_iters x ppo.rollout_iters, one
+#     full episode per update), cycling through the training seeds 1-100,
+#   - discount factor 0.99,
+#   - the best model by validation revenue is kept (dap_env.validate_every),
+#   - one run per model seed (numpy_seed, set by the launch script).
+# Learning rates and the rest of the PPO setup are this repo's own.
+name: "dap srl-comparison"
+
+wandb_mode: "online"
+
+problem: "dap"
+portfolio_zero_init_seeds: [5, 6, 7]
+
+numpy_seed: 5
+load: False
+load_path: "params/k4g2v0ol.yaml"
+
+device: "cuda"
+
+scip:
+  verbose: false
+
+scip_brute:
+  verbose: false
+  disable_heuristics: true
+  disable_presolve: true
+  disable_separating: true
+  disable_propagation: true
+  disable_conflict_analysis: true
+  disable_symmetry: true
+  prefer_most_fractional_branching: false
+  prefer_breadth_first: false
+  tighten_integer_projected_bounds: false
+  mimic_bnb_pool_filter: false
+  prefer_depth_first: true
+
+training:
+  # options: vanilla_gradient | ppo
+  algorithm: "ppo"
+  # options: scip | scip_brute | bnb
+  solver: "scip"
+
+model:
+  state_size: 6
+  action_size: 3
+  n_cons: 4
+  n_value_func: 2
+  penalty_factor: 1000
+
+gym:
+  pf: 30
+  noise_std: 1
+
+plotting:
+  window_size: 10
+
+portfolio_model:
+  lr_mult_aA: 1.0
+  lr_mult_aB: 1.0
+  lr_mult_b: 1.0
+  position_dynamics_mode: "trade_stateful"
+
+portfolio_env:
+  transaction_cost: 0.0001
+  holding_cost: 0.00001
+  budget_cap: 750
+  initial_cash: 1000
+  cash_interest_rate: 0.0
+  risk_cap: 750
+  risk_weight: 1.0
+  asset_max_position: 10
+  action_mode: "target"
+  reward_mode: "legacy"
+  inventory_penalty: 0.05
+  market_mode: "returns"
+  return_mu: 0.0
+  return_phi: 0.9
+  return_sigma: 0.02
+  alpha_mode: "on"
+  alpha_rho: 0.9
+  alpha_sigma: 0.02
+  alpha_to_return: 0.8
+  signal_noise_std: 0.002
+  return_signal_scale: 2.0
+  cvar_mode: "on"
+  cvar_cap: 0.12
+  cvar_alpha: 0.95
+  cvar_n_scenarios: 40
+  cvar_obj_weight: 0.2
+  price_levels_mode: "on"
+  initial_asset_price: 100.0
+  min_asset_price: 1.0
+
+# Dynamic assortment problem. Values below are the setup of the SRL codebase.
+# For problem "dap" also set ppo.minimize_env_reward to False (the reward is
+# revenue) and rollout_iters to a multiple of max_steps.
+dap_env:
+  n_items: 20
+  assortment_size: 4
+  initial_inventory: 200
+  max_steps: 80
+  train_seeds: [1, 100]
+  # SRL validates on 30 train and 30 validation episodes before every training
+  # episode and keeps the best model. Each validation takes ~8 minutes here, so
+  # validate every 10 iterations (~3 h per run); 1 matches SRL (~28 h per run).
+  validate_every: 10
+  validate_episodes: 30
+
+ppo:
+  # Keep PPO aligned with your objective: minimize env reward.
+  minimize_env_reward: False
+  # Normalize rewards only for PPO update stability.
+  normalize_rewards: True
+  reward_norm_eps: 1.0e-8
+  # Set null to disable clipping of transformed rewards.
+  reward_clip: null
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_param: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  actor_lr: 0.005
+  critic_lr: 0.001
+  policy_beta: 1
+  # Normalize MILP objective values before softmax logits for seed-robust ratios.
+  normalize_obj_values: true
+  obj_norm_eps: 1.0e-8
+  opt_epochs: 20
+  mini_batch_size: 32
+  rollout_iters: 80
+  target_kl: 0.01
+  normalize_adv: True
+  nn_sample: True
+
+vanilla_gradient:
+  critic:
+    lr: 0.01
+    df: 0.9
+    eps: 0.01
+  actor:
+    sampled_grad: True
+    nn_sample: True
+    lr: 0.001
+    beta: 0.05
+    sample: False
+    num_samples: 0.3
+  train_iters: 20
+  rollout_iters: 80
+
+total_iters: 200
+
+explicit_sol_time: 4
+comp_expected: False
+comp_expected_every: 100
+terminal_log_every: 100
+save_every: 10

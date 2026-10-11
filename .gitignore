@@ -4,3 +4,4 @@ wandb/
 **.png
 params/
 **.out
+runs/
