@@ -115,6 +115,21 @@ def resolve_runtime_device(configured_device):
     return device
 
 
+def build_dap_env(config: AppConfig) -> dap_env.DynamicAssortmentEnvironment:
+    dap_cfg = config.dap_env
+    first_seed, last_seed = dap_cfg.train_seeds
+    return dap_env.DynamicAssortmentEnvironment(
+        episode_seeds=range(first_seed, last_seed + 1),
+        sim=dap_env.DynamicAssortmentSimulator(
+            n_items=dap_cfg.n_items,
+            n_static_features=2,
+            assortment_size=dap_cfg.assortment_size,
+            initial_inventory=dap_cfg.initial_inventory,
+            max_steps=dap_cfg.max_steps,
+        ),
+    )
+
+
 def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, Env]:
     problem_name = config.problem
     configured_seed = config.numpy_seed
@@ -271,17 +286,7 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
             )
         case "dap":
             dap_cfg = config.dap_env
-            first_seed, last_seed = dap_cfg.train_seeds
-            environment = dap_env.DynamicAssortmentEnvironment(
-                episode_seeds=range(first_seed, last_seed + 1),
-                sim=dap_env.DynamicAssortmentSimulator(
-                    n_items=dap_cfg.n_items,
-                    n_static_features=2,
-                    assortment_size=dap_cfg.assortment_size,
-                    initial_inventory=dap_cfg.initial_inventory,
-                    max_steps=dap_cfg.max_steps,
-                ),
-            )
+            environment = build_dap_env(config)
             # No seed: automatically uses rolling seed per episode
             init_env_seed = None
             n_features = dap_model.N_FEATURES
