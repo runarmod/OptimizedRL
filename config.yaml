@@ -97,7 +97,7 @@ dap_env:
 
 ppo:
   # Keep PPO aligned with your objective: minimize env reward.
-  minimize_env_reward: True
+  minimize_env_reward: False
   # Normalize rewards only for PPO update stability.
   normalize_rewards: True
   reward_norm_eps: 1.0e-8
