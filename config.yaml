@@ -1,4 +1,4 @@
-name: "Seed1 gradient"
+name: "dap tr w/greedy+expert baselines"
 
 wandb_mode: "online"
 
