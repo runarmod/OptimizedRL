@@ -4,10 +4,15 @@ Every parameter file is evaluated on the same seeded episodes, so the results
 of different training runs can be compared directly.
 
     uv run python evaluate.py params/<run id>.yaml params/<other run id>.yaml
+
+The greedy and expert policies of the DAP environment need no params file:
+
+    uv run python evaluate.py --dap-baselines --seed 1
 """
 
 import argparse
 import csv
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -15,11 +20,17 @@ import yaml
 
 from src.config.config_loader import load_config
 from src.config.config_models import AppConfig
+from src.gym_envs import dap_env
 from src.gym_envs.env_interface import Env
 from src.models.model_interface import Model
 from src.solvers.solver_interface import Solver
 from src.utils.policy import nn_branch_sample
-from train import build_model_and_env, build_solver, sanitize_env_action
+from train import (
+    build_dap_env,
+    build_model_and_env,
+    build_solver,
+    sanitize_env_action,
+)
 
 
 def best_action(model: Model, solver: Solver) -> np.ndarray:
@@ -44,15 +55,13 @@ def seed_episode(env: Env, seed: int) -> None:
 
 
 def run_episode(
-    model: Model, env: Env, solver: Solver, seed: int, max_steps: int
+    env: Env, act: Callable[[], np.ndarray], seed: int, max_steps: int
 ) -> dict[str, float]:
     seed_episode(env, seed)
     totals = {"ep_reward": 0.0}
     length = 0
     for _ in range(max_steps):
-        model.update_from_environment(env)
-        action = sanitize_env_action(env, best_action(model, solver))
-        _, reward, terminated, _, info = env.step(action)
+        _, reward, terminated, _, info = env.step(act())
         totals["ep_reward"] += float(reward)
         for name, value in env.get_plot_metrics(info).items():
             totals[name] = totals.get(name, 0.0) + value
@@ -76,14 +85,47 @@ def config_for_params(params_path: Path, fallback: AppConfig) -> AppConfig:
 
 
 def evaluate(
+    label: str,
+    env: Env,
+    act: Callable[[], np.ndarray],
+    seeds: list[int],
+    max_steps: int,
+) -> list[dict[str, float]]:
+    print(f"Evaluating {label} on {len(seeds)} episodes...")
+    results = []
+    for seed in seeds:
+        episode = run_episode(env, act, seed, max_steps)
+        results.append({"run": label, "seed": seed, **episode})
+    return results
+
+
+def evaluate_params(
     label: str, config: AppConfig, project_root: Path, seeds: list[int], max_steps: int
 ) -> list[dict[str, float]]:
     model, env = build_model_and_env(config, project_root)
     solver = build_solver(config)
+
+    def act() -> np.ndarray:
+        model.update_from_environment(env)
+        return sanitize_env_action(env, best_action(model, solver))
+
+    return evaluate(label, env, act, seeds, max_steps)
+
+
+def evaluate_dap_baselines(
+    config: AppConfig, seeds: list[int], max_steps: int | None
+) -> list[dict[str, float]]:
+    env = build_dap_env(config)
+    if max_steps is None:
+        max_steps = config.dap_env.max_steps
     results = []
-    for seed in seeds:
-        episode = run_episode(model, env, solver, seed, max_steps)
-        results.append({"run": label, "seed": seed, **episode})
+    for label, policy in (
+        ("greedy", dap_env.greedy_assortment),
+        ("expert", dap_env.expert_assortment),
+    ):
+        results.extend(
+            evaluate(label, env, lambda: policy(env.sim), seeds, max_steps)
+        )
     return results
 
 
@@ -123,13 +165,18 @@ def main():
         action="store_true",
         help="Also evaluate the untrained initial parameters from config.yaml.",
     )
+    parser.add_argument(
+        "--dap-baselines",
+        action="store_true",
+        help="Also evaluate the greedy and expert policies on dap_env from config.yaml.",
+    )
     parser.add_argument("--csv", type=Path, help="Write per-episode results here.")
     args = parser.parse_args()
 
     project_root = Path(__file__).resolve().parent
     base_config = load_config(project_root / "config.yaml")
-    if not args.params and not args.baseline:
-        parser.error("give at least one params file or --baseline")
+    if not args.params and not args.baseline and not args.dap_baselines:
+        parser.error("give at least one params file, --baseline or --dap-baselines")
 
     runs: list[tuple[str, AppConfig]] = []
     if args.baseline:
@@ -141,13 +188,14 @@ def main():
 
     seeds = list(range(args.seed, args.seed + args.episodes))
     results = []
+    if args.dap_baselines:
+        results.extend(evaluate_dap_baselines(base_config, seeds, args.max_steps))
     for label, config in runs:
         max_steps = args.max_steps
         if max_steps is None:
             algorithm_config = getattr(config, config.training.algorithm)
             max_steps = algorithm_config.rollout_iters
-        print(f"Evaluating {label} on {len(seeds)} episodes...")
-        results.extend(evaluate(label, config, project_root, seeds, max_steps))
+        results.extend(evaluate_params(label, config, project_root, seeds, max_steps))
 
     print()
     print_summary(results)

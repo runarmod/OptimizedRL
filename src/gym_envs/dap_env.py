@@ -1,4 +1,6 @@
 from collections.abc import Sequence
+from functools import lru_cache
+from itertools import combinations
 
 import gymnasium as gym
 import numpy as np
@@ -138,6 +140,39 @@ class DynamicAssortmentSimulator:
         item, revenue = self.purchase(assortment)
         self.apply_purchase(item)
         return item, revenue
+
+
+@lru_cache
+def _all_assortments(n_items: int, assortment_size: int) -> np.ndarray:
+    """Item indices of every assortment, shape (n_assortments, assortment_size)."""
+    return np.array(list(combinations(range(n_items), assortment_size)))
+
+
+def _to_assortment(items: np.ndarray, n_items: int) -> np.ndarray:
+    assortment = np.zeros(n_items, dtype=np.int32)
+    assortment[items] = 1
+    return assortment
+
+
+def greedy_assortment(sim: DynamicAssortmentSimulator) -> np.ndarray:
+    """Greedy policy of the SRL paper: the most expensive items."""
+    items = np.argsort(-sim.prices, kind="stable")[: sim.assortment_size]
+    return _to_assortment(items, sim.n_items)
+
+
+def expert_assortment(sim: DynamicAssortmentSimulator) -> np.ndarray:
+    """Expert policy of the SRL paper (`expert_solution` in the SRL codebase).
+
+    Knows the hidden customer model and picks the in-stock assortment with the
+    highest expected revenue of this step. It does not plan ahead.
+    """
+    items = _all_assortments(sim.n_items, sim.assortment_size)
+    weight = np.exp(sim.customer_utilities())[items]
+    expected_revenue = (weight * sim.prices[items]).sum(axis=1) / (
+        1 + weight.sum(axis=1)
+    )
+    expected_revenue[(sim.inventory[items] <= 0).any(axis=1)] = -np.inf
+    return _to_assortment(items[expected_revenue.argmax()], sim.n_items)
 
 
 class DynamicAssortmentEnvironment(Env):
