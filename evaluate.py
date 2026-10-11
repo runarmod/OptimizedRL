@@ -3,7 +3,7 @@
 Every parameter file is evaluated on the same seeded episodes, so the results
 of different training runs can be compared directly.
 
-    uv run python evaluate.py params/<run id>.yaml params/<other run id>.yaml 
+    uv run python evaluate.py params/<run id>.yaml params/<other run id>.yaml
 """
 
 import argparse
@@ -23,13 +23,13 @@ from train import build_model_and_env, build_solver, sanitize_env_action
 
 
 def best_action(model: Model, solver: Solver) -> np.ndarray:
-    """Most probable action of the trained policy.
-    """
+    """Most probable action of the trained policy."""
     node = model.get_LP_formulation()
     sol_pool = solver.solve(node)
     desc_vars = model.get_desc_var_indices()
     if not sol_pool:
         return np.zeros(len(node["c"]))[desc_vars]
+    sol_pool = model.complete_candidates(sol_pool)
 
     best = min(sol_pool, key=lambda sol: sol["fun"])
     action = best["x"][desc_vars]

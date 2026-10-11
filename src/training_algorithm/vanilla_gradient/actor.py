@@ -89,6 +89,7 @@ class Actor:
 
         if sol_pool is None:
             return None
+        sol_pool = self.model.complete_candidates(sol_pool)
         for sol in sol_pool:
             if np.any(
                 np.abs(
