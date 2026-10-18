@@ -7,12 +7,15 @@ of different training runs can be compared directly.
 
 The greedy and expert policies of the DAP environment need no params file:
 
-    uv run python evaluate.py --dap-baselines --seed 1
+    uv run python evaluate.py --dap-baselines
+
+Episodes start at the seed after the DAP training seeds unless --seed is given.
 """
 
 import argparse
 import csv
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -112,20 +115,27 @@ def evaluate_params(
     return evaluate(label, env, act, seeds, max_steps)
 
 
+def default_max_steps(
+    requested: int | None, config: AppConfig, problem: str | None = None
+) -> int:
+    """Steps per episode: `requested` if given, else the default of `problem`."""
+    if requested is not None:
+        return requested
+    if (problem or config.problem) == "dap":
+        return config.dap_env.max_steps
+    return getattr(config, config.training.algorithm).rollout_iters
+
+
 def evaluate_dap_baselines(
-    config: AppConfig, seeds: list[int], max_steps: int | None
+    config: AppConfig, seeds: list[int], max_steps: int
 ) -> list[dict[str, float]]:
     env = build_dap_env(config)
-    if max_steps is None:
-        max_steps = config.dap_env.max_steps
     results = []
     for label, policy in (
         ("greedy", dap_env.greedy_assortment),
         ("expert", dap_env.expert_assortment),
     ):
-        results.extend(
-            evaluate(label, env, lambda: policy(env.sim), seeds, max_steps)
-        )
+        results.extend(evaluate(label, env, partial(policy, env.sim), seeds, max_steps))
     return results
 
 
@@ -152,13 +162,17 @@ def main():
     parser.add_argument("params", nargs="*", type=Path, help="Saved params files.")
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument(
-        "--seed", type=int, default=0, help="Seed of the first episode."
+        "--seed",
+        type=int,
+        default=None,
+        help="Seed of the first episode (default: 0, or after the training seeds for DAP).",
     )
     parser.add_argument(
         "--max-steps",
         type=int,
         default=None,
-        help="Step limit per episode (default: rollout_iters of the training run).",
+        help="Step limit per episode (default: dap_env.max_steps for DAP, otherwise"
+        " rollout_iters of the training run).",
     )
     parser.add_argument(
         "--baseline",
@@ -186,15 +200,17 @@ def main():
             (params_path.stem, config_for_params(params_path.resolve(), base_config))
         )
 
-    seeds = list(range(args.seed, args.seed + args.episodes))
+    first_seed = args.seed
+    if first_seed is None:
+        uses_dap = args.dap_baselines or any(c.problem == "dap" for _, c in runs)
+        first_seed = base_config.dap_env.train_seeds[1] + 1 if uses_dap else 0
+    seeds = list(range(first_seed, first_seed + args.episodes))
     results = []
     if args.dap_baselines:
-        results.extend(evaluate_dap_baselines(base_config, seeds, args.max_steps))
+        max_steps = default_max_steps(args.max_steps, base_config, problem="dap")
+        results.extend(evaluate_dap_baselines(base_config, seeds, max_steps))
     for label, config in runs:
-        max_steps = args.max_steps
-        if max_steps is None:
-            algorithm_config = getattr(config, config.training.algorithm)
-            max_steps = algorithm_config.rollout_iters
+        max_steps = default_max_steps(args.max_steps, config)
         results.extend(evaluate_params(label, config, project_root, seeds, max_steps))
 
     print()
