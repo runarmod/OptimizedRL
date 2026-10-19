@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -329,8 +330,16 @@ def sanitize_env_action(env, action):
 
 def main():
     project_root = Path(__file__).resolve().parent
-    config_path = project_root / "config.yaml"
-    config = load_config(config_path)
+    parser = argparse.ArgumentParser(description="Train a MILP policy.")
+    parser.add_argument("--config", type=Path, default=project_root / "config.yaml")
+    parser.add_argument(
+        "--params-dir",
+        type=Path,
+        default=project_root / "params",
+        help="Directory the trained parameters are saved in.",
+    )
+    args = parser.parse_args()
+    config = load_config(args.config)
     runtime_device = resolve_runtime_device(config.device)
 
     model, env = build_model_and_env(config, project_root)
@@ -366,7 +375,7 @@ def main():
 
     expected_ep_reward = None
     last_calced = 0
-    params_path = project_root / "params" / f"{plotter.run.id}.yaml"
+    params_path = args.params_dir / f"{plotter.run.id}.yaml"
     for i in tqdm(range(total_iters), desc="Total Iterations"):
         if last_calced > comp_expected_every and comp_expected:
             expected_ep_reward = calc_expected_reward(
@@ -452,6 +461,8 @@ def main():
         )
         if i % config.save_every == 0:
             save_model_params(params_path, model, config, i)
+
+    save_model_params(params_path, model, config, total_iters)
 
 
 if __name__ == "__main__":
