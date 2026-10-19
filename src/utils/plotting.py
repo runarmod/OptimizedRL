@@ -86,7 +86,10 @@ class Plotter:
         original_params: ParameterSnapshot,
         model_params: ParameterSnapshot,
     ):
-        metrics = model_params.change_metrics(original_params)
+        metrics = {
+            f"parameters/{name}": value
+            for name, value in model_params.change_metrics(original_params).items()
+        }
         for name, value in update_result["metrics"].items():
-            metrics[f"{algorithm}_{name}"] = value
+            metrics[f"{algorithm}/{name}"] = value
         self.run.log(metrics)
