@@ -4,7 +4,7 @@
 #   bash scripts/run_srl_comparison.sh [SEED ...]
 #
 # Trains one run per model seed (default: the ten seeds of the paper) in
-# parallel, then evaluates the trained model of every run on the paper's train
+# parallel, then evaluates the best model of every run on the paper's train
 # and test episodes with compare_srl_paper.py. Everything is written to
 # runs/srl_dap_<timestamp>/. Start it under nohup or tmux so it survives
 # logging out of the server:
@@ -70,12 +70,18 @@ for seed in "${seeds[@]}"; do
 done
 wait
 
-# The final params of every finished run: the only YAML file next to its config.
+# Test the best model of every finished run, as SRL does, or its final model
+# if it did not validate during training (validation.every: 0).
 trained=()
 for seed in "${seeds[@]}"; do
     seed_dir="$run_dir/seed_$seed"
     if [[ ! -e $seed_dir/finished ]]; then
         echo "seed $seed did not finish, leaving it out of the comparison"
+        continue
+    fi
+    best=("$seed_dir"/*_best.yaml)
+    if (( ${#best[@]} > 0 )); then
+        trained+=("${best[0]}")
         continue
     fi
     for file in "$seed_dir"/*.yaml; do

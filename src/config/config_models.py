@@ -177,6 +177,28 @@ class DapEnvConfig(StrictConfig):
     )
 
 
+class ValidationConfig(StrictConfig):
+    every: int = Field(
+        0,
+        ge=0,
+        description="Training iterations between validations that keep the best "
+        "model (0 disables). The SRL paper validates before every training episode.",
+    )
+    episodes: int = Field(30, gt=0, description="Episodes per validation split.")
+    splits: dict[str, int] = Field(
+        default_factory=lambda: {"train": 1, "val": 1001},
+        min_length=1,
+        description="First episode seed of each split. The score is the mean over "
+        "the splits of their mean episode reward. Default: the SRL paper's DAP "
+        "training and validation seeds.",
+    )
+    maximize_reward: bool = Field(
+        True,
+        description="Keep the model with the highest score, or the lowest when "
+        "the environment reward is a cost.",
+    )
+
+
 class PpoConfig(StrictConfig):
     nn_sample: bool = Field(
         description="PPO override for fractional-solution sampling."
@@ -257,6 +279,7 @@ class AppConfig(StrictConfig):
     portfolio_model: PortfolioModelConfig
     portfolio_env: PortfolioEnvConfig
     dap_env: DapEnvConfig
+    validation: ValidationConfig = Field(default_factory=ValidationConfig)
     ppo: PpoConfig
     vanilla_gradient: VanillaGradientConfig
     total_iters: int = Field(gt=0, description="Total outer training iterations.")
