@@ -1,4 +1,5 @@
 import argparse
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +24,7 @@ from src.training_algorithm.vanilla_gradient.vanilla_gradient import (
 )
 from src.utils.calc_expected import calc_expected_reward
 from src.utils.checkpoint import load_model_params, save_model_params
+from src.utils.evaluation import best_action, default_max_steps, run_episode
 from src.utils.plotting import Plotter
 
 
@@ -328,6 +330,62 @@ def sanitize_env_action(env, action):
     return action_arr
 
 
+def validate(
+    model: Model, solver: Solver, config: AppConfig, env: Env
+) -> dict[str, float]:
+    """Mean episode reward of the most probable actions on each validation
+    split: `validation.episodes` episodes from the split's first seed."""
+    validation = config.validation
+    max_steps = default_max_steps(None, config)
+
+    def act() -> np.ndarray:
+        model.update_from_environment(env)
+        return sanitize_env_action(env, best_action(model, solver))
+
+    rewards = {}
+    num_episodes = validation.episodes * 2
+    print(f"\nValidating on {num_episodes} episodes...")
+    for split, first_seed in validation.splits.items():
+        seeds = range(first_seed, first_seed + validation.episodes)
+        episodes = [
+            run_episode(env, act, seed, max_steps)["ep_reward"] for seed in seeds
+        ]
+        rewards[split] = float(np.mean(episodes))
+    return rewards
+
+
+def validate_and_keep_best(
+    model: Model,
+    solver: Solver,
+    config: AppConfig,
+    env: Env,
+    plotter: Plotter,
+    best_path: Path,
+    completed_iters: int,
+    best_score: float | None,
+) -> float | None:
+    """Validate the model and save it to best_path if it is the best so far."""
+    rewards = validate(model, solver, config, env)
+    score = float(np.mean(list(rewards.values())))
+    plotter.run.log(
+        {f"validation/{split}_reward": reward for split, reward in rewards.items()}
+        | {"validation/score": score}
+    )
+    if config.validation.maximize_reward:
+        is_best = best_score is None or score >= best_score
+    else:
+        is_best = best_score is None or score <= best_score
+    split_rewards = ", ".join(f"{name} {value:.1f}" for name, value in rewards.items())
+    tqdm.write(
+        f"Validation after {completed_iters} iterations: {split_rewards}"
+        f"{' (best)' if is_best else ''}"
+    )
+    if not is_best:
+        return best_score
+    save_model_params(best_path, model, config, completed_iters)
+    return score
+
+
 def main():
     project_root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description="Train a MILP policy.")
@@ -376,7 +434,25 @@ def main():
     expected_ep_reward = None
     last_calced = 0
     params_path = args.params_dir / f"{plotter.run.id}.yaml"
+    best_params_path = args.params_dir / f"{plotter.run.id}_best.yaml"
+    validate_every = config.validation.every
+    # Validation runs on its own copy of the environment, so the training
+    # episodes are not interrupted.
+    validation_env = copy.deepcopy(env) if validate_every else None
+    best_score = None
     for i in tqdm(range(total_iters), desc="Total Iterations"):
+        if validate_every and i % validate_every == 0:
+            best_score = validate_and_keep_best(
+                model,
+                solver,
+                config,
+                validation_env,
+                plotter,
+                best_params_path,
+                i,
+                best_score,
+            )
+
         if last_calced > comp_expected_every and comp_expected:
             expected_ep_reward = calc_expected_reward(
                 -original_model_params.c,

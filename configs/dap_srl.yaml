@@ -4,10 +4,11 @@
 #     full episode per update), cycling through the training seeds 1-100,
 #   - discount factor 0.99,
 #   - one run per model seed (numpy_seed, set by the launch script),
-#   - the trained model is tested on train seeds 1-100 and test seeds
-#     2001-2100 (compare_srl_paper.py).
-# Unlike SRL, there is no validation during training, so the final model is
-# tested instead of the best one.
+#   - before each training episode, the model is validated on the training
+#     seeds 1-30 and validation seeds 1001-1030, and the one with the best mean
+#     of the two is kept (validation),
+#   - the best model is tested on train seeds 1-100 and test seeds 2001-2100
+#     (compare_srl_paper.py).
 # Learning rates and the rest of the PPO setup are this repo's own.
 name: "dap srl-comparison"
 
@@ -44,6 +45,20 @@ training:
   algorithm: "ppo"
   # options: scip | scip_brute | bnb
   solver: "scip"
+
+# Keeps the model with the best mean revenue on the training seeds 1-30 and the
+# validation seeds 1001-1030, as SRL does.
+validation:
+  # Training iterations between validations: 1 is SRL's protocol. A validation
+  # runs episodes x number of splits episodes, so larger values train faster;
+  # 0 turns validation off and the final model is tested instead.
+  every: 5 # SRL uses 1, but we can validate less often to save time.
+  episodes: 30
+  splits:
+    train: 1
+    val: 1001
+  # The reward is revenue.
+  maximize_reward: true
 
 model:
   state_size: 6
