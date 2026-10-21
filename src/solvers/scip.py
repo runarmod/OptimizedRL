@@ -406,6 +406,11 @@ class SCIPSolver(Solver):
             if lb is not None and ub is not None and lb > ub + 1e-10:
                 return None
 
+        # Unchanged bounds give the root LP again. The caller has already offered
+        # its result to the pool, so the pool would drop this one anyway.
+        if bounds == init_node["bounds"]:
+            return None
+
         res = _linprog(
             init_node["c"],
             A_ub=init_node["A_ub"],
@@ -580,9 +585,7 @@ class SCIPSolver(Solver):
             if A_ub is not None and b_ub is not None:
                 for i in range(A_ub.shape[0]):
                     expr = quicksum(
-                        float(A_ub[i, j]) * vars_[j]
-                        for j in range(n_vars)
-                        if A_ub[i, j] != 0
+                        float(A_ub[i, j]) * vars_[j] for j in np.flatnonzero(A_ub[i])
                     )
                     cons = model.addCons(expr <= float(b_ub[i]))
                     try:
@@ -594,9 +597,7 @@ class SCIPSolver(Solver):
             if A_eq is not None and b_eq is not None:
                 for i in range(A_eq.shape[0]):
                     expr = quicksum(
-                        float(A_eq[i, j]) * vars_[j]
-                        for j in range(n_vars)
-                        if A_eq[i, j] != 0
+                        float(A_eq[i, j]) * vars_[j] for j in np.flatnonzero(A_eq[i])
                     )
                     cons = model.addCons(expr == float(b_eq[i]))
                     try:
