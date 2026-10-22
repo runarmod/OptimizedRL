@@ -2,6 +2,8 @@ import numpy as np
 from pyscipopt import SCIP_EVENTTYPE, Eventhdlr, Model, quicksum
 from scipy.optimize import linprog as _linprog
 
+from src.solvers.solver_interface import Solver, best_action_from_pool
+
 _INVALID_OBJ = -1e18  # threshold below which an LP objective is considered garbage
 
 
@@ -301,7 +303,7 @@ class NodeTracker(Eventhdlr):
         self.node_map[node_num] = entry
 
 
-class SCIPSolver:
+class SCIPSolver(Solver):
     """SCIP-based MILP solver. Uses SCIP's native B&B engine with LP relaxations tracked
     via event handlers. SCIP manages branching, cutting planes, and primal heuristics —
     so it scales to larger problems naturally. Only nodes where a valid LP objective was
@@ -515,6 +517,9 @@ class SCIPSolver:
                 _append_unique(lp_alt)
 
         return results if results else None
+
+    def solve_best(self, node, model):
+        return best_action_from_pool(self, node, model)
 
     def solve(self, init_node):
         c = init_node["c"]
