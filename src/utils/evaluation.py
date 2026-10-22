@@ -6,23 +6,11 @@ from src.config.config_models import AppConfig
 from src.gym_envs.env_interface import Env
 from src.models.model_interface import Model
 from src.solvers.solver_interface import Solver
-from src.utils.policy import nn_branch_sample
 
 
 def best_action(model: Model, solver: Solver) -> np.ndarray:
     """Most probable action of the trained policy."""
-    node = model.get_LP_formulation()
-    sol_pool = solver.solve(node)
-    desc_vars = model.get_desc_var_indices()
-    if not sol_pool:
-        return np.zeros(len(node["c"]))[desc_vars]
-    sol_pool = model.complete_candidates(sol_pool)
-
-    best = min(sol_pool, key=lambda sol: sol["fun"])
-    action = best["x"][desc_vars]
-    if best.get("fathomed"):
-        action, _ = nn_branch_sample(action, best["bounds"])
-    return action
+    return solver.solve_best(model.get_LP_formulation(), model)
 
 
 def seed_episode(env: Env, seed: int) -> None:

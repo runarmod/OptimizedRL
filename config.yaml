@@ -32,10 +32,10 @@ training:
   # options: vanilla_gradient | ppo
   algorithm: "ppo"
   # options: scip | scip_brute | bnb
-  solver: "scip"
+  solver: "scip_brute"
 
 validation:
-  every: 20
+  every: 0
   episodes: 2
   splits:
     train: 1

@@ -44,7 +44,7 @@ training:
   # options: vanilla_gradient | ppo
   algorithm: "ppo"
   # options: scip | scip_brute | bnb
-  solver: "scip"
+  solver: "scip_brute"
 
 # Keeps the model with the best mean revenue on the training seeds 1-30 and the
 # validation seeds 1001-1030, as SRL does.
@@ -52,7 +52,7 @@ validation:
   # Training iterations between validations: 1 is SRL's protocol. A validation
   # runs episodes x number of splits episodes, so larger values train faster;
   # 0 turns validation off and the final model is tested instead.
-  every: 5 # SRL uses 1, but we can validate less often to save time.
+  every: 10 # SRL uses 1, but we can validate less often to save time.
   episodes: 30
   splits:
     train: 1

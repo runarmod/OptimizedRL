@@ -10,6 +10,8 @@ from pyscipopt import (
 )
 from scipy.optimize import linprog as _linprog
 
+from src.solvers.solver_interface import NoSolutionError, Solver
+
 _INVALID_OBJ = -1e18
 _HEURISTICS = (
     "trivial",
@@ -440,7 +442,7 @@ class BNBMostFractionalBranchrule(Branchrule):
         return {"result": SCIP_RESULT.DIDNOTRUN}
 
 
-class SCIPSolver:
+class SCIPSolver(Solver):
     def __init__(
         self,
         verbose=False,
@@ -869,8 +871,10 @@ class SCIPSolver:
             "status": "lp_branch_relaxation",
         }
 
-    def solve(self, init_node):
-        self.last_tree_snapshot = None
+    def _build_model(self, model, init_node):
+        """Configure `model` and add the variables, objective and constraints of
+        init_node. Returns the variables and the inequality and equality
+        constraint names."""
         c = init_node["c"]
         a_ub = init_node["A_ub"]
         b_ub = init_node["b_ub"]
@@ -880,54 +884,80 @@ class SCIPSolver:
         integer = init_node["integer"]
         n_vars = len(c)
 
-        model = Model("MILP")
-        try:
-            self._configure_model(model)
+        self._configure_model(model)
 
-            vars_ = []
-            for idx in range(n_vars):
-                lb, ub = bounds[idx]
-                vars_.append(
-                    model.addVar(
-                        name=f"x_{idx}",
-                        lb=float(lb) if lb is not None else -1e20,
-                        ub=float(ub) if ub is not None else 1e20,
-                        vtype="I" if integer[idx] else "C",
-                    )
+        vars_ = []
+        for idx in range(n_vars):
+            lb, ub = bounds[idx]
+            vars_.append(
+                model.addVar(
+                    name=f"x_{idx}",
+                    lb=float(lb) if lb is not None else -1e20,
+                    ub=float(ub) if ub is not None else 1e20,
+                    vtype="I" if integer[idx] else "C",
                 )
-
-            model.setObjective(
-                quicksum(float(c[idx]) * vars_[idx] for idx in range(n_vars)),
-                sense="minimize",
             )
 
-            ineq_cons_names = []
-            if a_ub is not None and b_ub is not None:
-                for row_idx in range(a_ub.shape[0]):
-                    expr = quicksum(
-                        float(a_ub[row_idx, col_idx]) * vars_[col_idx]
-                        for col_idx in range(n_vars)
-                        if a_ub[row_idx, col_idx] != 0
-                    )
-                    cons = model.addCons(expr <= float(b_ub[row_idx]))
-                    try:
-                        ineq_cons_names.append(model.getConsName(cons))
-                    except Exception:
-                        ineq_cons_names.append(str(cons))
+        model.setObjective(
+            quicksum(float(c[idx]) * vars_[idx] for idx in range(n_vars)),
+            sense="minimize",
+        )
 
-            eq_cons_names = []
-            if a_eq is not None and b_eq is not None:
-                for row_idx in range(a_eq.shape[0]):
-                    expr = quicksum(
-                        float(a_eq[row_idx, col_idx]) * vars_[col_idx]
-                        for col_idx in range(n_vars)
-                        if a_eq[row_idx, col_idx] != 0
-                    )
-                    cons = model.addCons(expr == float(b_eq[row_idx]))
-                    try:
-                        eq_cons_names.append(model.getConsName(cons))
-                    except Exception:
-                        eq_cons_names.append(str(cons))
+        ineq_cons_names = []
+        if a_ub is not None and b_ub is not None:
+            for row_idx in range(a_ub.shape[0]):
+                expr = quicksum(
+                    float(a_ub[row_idx, col_idx]) * vars_[col_idx]
+                    for col_idx in range(n_vars)
+                    if a_ub[row_idx, col_idx] != 0
+                )
+                cons = model.addCons(expr <= float(b_ub[row_idx]))
+                try:
+                    ineq_cons_names.append(model.getConsName(cons))
+                except Exception:
+                    ineq_cons_names.append(str(cons))
+
+        eq_cons_names = []
+        if a_eq is not None and b_eq is not None:
+            for row_idx in range(a_eq.shape[0]):
+                expr = quicksum(
+                    float(a_eq[row_idx, col_idx]) * vars_[col_idx]
+                    for col_idx in range(n_vars)
+                    if a_eq[row_idx, col_idx] != 0
+                )
+                cons = model.addCons(expr == float(b_eq[row_idx]))
+                try:
+                    eq_cons_names.append(model.getConsName(cons))
+                except Exception:
+                    eq_cons_names.append(str(cons))
+
+        return vars_, ineq_cons_names, eq_cons_names
+
+    def solve_best(self, node, model):
+        """Action of SCIP's optimal integer solution. Solves only the MILP: no
+        node tracking or candidate pool."""
+        self.last_tree_snapshot = None
+        scip_model = Model("MILP")
+        try:
+            vars_, _, _ = self._build_model(scip_model, node)
+            scip_model.optimize()
+            if scip_model.getNSols() == 0:
+                raise NoSolutionError(
+                    f"SCIP found no solution (status {scip_model.getStatus()})"
+                )
+            x = np.array([scip_model.getVal(v) for v in vars_], dtype=float)
+            return x[model.get_desc_var_indices()]
+        finally:
+            self._cleanup_model(scip_model)
+
+    def solve(self, init_node):
+        self.last_tree_snapshot = None
+        bounds = init_node["bounds"]
+        integer = init_node["integer"]
+
+        model = Model("MILP")
+        try:
+            _, ineq_cons_names, eq_cons_names = self._build_model(model, init_node)
 
             tracker = NodeTracker(
                 integer, ineq_cons_names=ineq_cons_names, eq_cons_names=eq_cons_names
