@@ -2,7 +2,7 @@ import numpy as np
 from pyscipopt import SCIP_EVENTTYPE, Eventhdlr, Model, quicksum
 from scipy.optimize import linprog as _linprog
 
-from src.solvers.solver_interface import Solver, best_action_from_pool
+from src.solvers.solver_interface import Solver
 
 _INVALID_OBJ = -1e18  # threshold below which an LP objective is considered garbage
 
@@ -517,9 +517,6 @@ class SCIPSolver(Solver):
                 _append_unique(lp_alt)
 
         return results if results else None
-
-    def solve_best(self, node, model):
-        return best_action_from_pool(self, node, model)
 
     def solve(self, init_node):
         c = init_node["c"]

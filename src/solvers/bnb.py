@@ -5,7 +5,7 @@ from math import ceil, floor
 import numpy as np
 from scipy.optimize import linprog
 
-from src.solvers.solver_interface import Solver, best_action_from_pool
+from src.solvers.solver_interface import Solver
 
 # Node dictionary template
 
@@ -302,9 +302,6 @@ class BranchAndBoundRevamped(Solver):
             (np.abs(var - round(var)) < 1e-6) if i else True
             for var, i in zip(x, integer)
         )
-
-    def solve_best(self, node, model):
-        return best_action_from_pool(self, node, model)
 
     def solve(self, init_node):
         verbose = self.verbose
