@@ -163,9 +163,5 @@ vanilla_gradient:
   rollout_iters: 80
 
 total_iters: 200
-
-explicit_sol_time: 4
-comp_expected: False
-comp_expected_every: 100
 terminal_log_every: 100
 save_every: 10

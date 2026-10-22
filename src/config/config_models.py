@@ -283,15 +283,6 @@ class AppConfig(StrictConfig):
     ppo: PpoConfig
     vanilla_gradient: VanillaGradientConfig
     total_iters: int = Field(gt=0, description="Total outer training iterations.")
-    explicit_sol_time: int = Field(
-        gt=0, description="Time horizon used by expected-reward evaluation."
-    )
-    comp_expected: bool = Field(
-        description="Compare against an expected reward when enabled."
-    )
-    comp_expected_every: int = Field(
-        gt=0, description="Iterations between expected-reward calculations."
-    )
     terminal_log_every: int = Field(
         gt=0, description="Window size for rolling terminal diagnostics."
     )
