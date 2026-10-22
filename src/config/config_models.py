@@ -39,6 +39,11 @@ class ScipBruteConfig(StrictConfig):
         description="Filter the candidate pool using BnB-like ordering."
     )
     prefer_depth_first: bool = Field(description="Prefer depth-first node selection.")
+    max_pool_size: int | None = Field(
+        gt=0,
+        description="Keep at most this many candidates, those with the lowest "
+        "objective. null keeps all.",
+    )
 
 
 class TrainingConfig(StrictConfig):

@@ -60,18 +60,19 @@ def _var_name_to_id(var_name):
 
 
 class NodeTracker(Eventhdlr):
-    def __init__(self, integer, ineq_cons_names=None, eq_cons_names=None):
+    """Records the branching conditions of each SCIP node. Leaf LPs are re-solved
+    from these conditions afterwards, so no LP solution data is collected here:
+    reading it on every LPSOLVED event dominated the solve time."""
+
+    def __init__(self, integer):
         super().__init__()
         self.integer = integer
-        self.ineq_cons_names = list(ineq_cons_names or [])
-        self.eq_cons_names = list(eq_cons_names or [])
         self.node_map = {}
         self.parent_bounds = {}
         self.event_counts = {
             "NODEFOCUSED": 0,
             "NODESOLVED": 0,
             "NODEDELETE": 0,
-            "LPSOLVED": 0,
         }
         self.skipped_no_lp_obj = 0
         self.skipped_invalid_lp_obj = 0
@@ -85,7 +86,6 @@ class NodeTracker(Eventhdlr):
             SCIP_EVENTTYPE.NODEFOCUSED,
             SCIP_EVENTTYPE.NODESOLVED,
             SCIP_EVENTTYPE.NODEDELETE,
-            SCIP_EVENTTYPE.LPSOLVED,
         ):
             try:
                 model.catchEvent(event_type, self)
@@ -118,25 +118,6 @@ class NodeTracker(Eventhdlr):
         if event_type == SCIP_EVENTTYPE.NODEDELETE:
             self.event_counts["NODEDELETE"] += 1
             self._handle_delete_event(event)
-            return
-
-        if event_type == SCIP_EVENTTYPE.LPSOLVED:
-            self.event_counts["LPSOLVED"] += 1
-            self._handle_node_event(model, event, status="lp_solved")
-
-    @staticmethod
-    def _read_lp_primal(model, var):
-        try:
-            val = model.getSolVal(None, var)
-            if val is not None:
-                return float(val)
-        except Exception:
-            pass
-
-        try:
-            return float(model.getLPSolVal(var))
-        except Exception:
-            return None
 
     def _handle_node_event(self, model, event, status):
         node = None
@@ -180,15 +161,10 @@ class NodeTracker(Eventhdlr):
             "lp_obj": None,
             "status": status,
             "was_solved": status == "solved",
-            "was_lp_solved": status == "lp_solved",
             "was_deleted": False,
             "branching_decision": None,
             "node_bounds": {},
             "conds": [],
-            "primal": {},
-            "duals_ineq": {},
-            "duals_eq": {},
-            "reduced_costs": {},
         }
 
         lp_obj = None
@@ -295,42 +271,6 @@ class NodeTracker(Eventhdlr):
         except Exception:
             pass
 
-        if status == "lp_solved":
-            try:
-                for var in model.getVars():
-                    entry["primal"][var.name] = self._read_lp_primal(model, var)
-            except Exception:
-                pass
-
-            try:
-                for cons in model.getConss():
-                    try:
-                        name = model.getConsName(cons)
-                    except Exception:
-                        name = str(cons)
-                    val = None
-                    try:
-                        val = float(model.getDualsolLinear(cons))
-                    except Exception:
-                        pass
-                    if name in self.eq_cons_names:
-                        entry["duals_eq"][name] = val
-                    elif name in self.ineq_cons_names:
-                        entry["duals_ineq"][name] = val
-            except Exception:
-                pass
-
-            try:
-                for var in model.getVars():
-                    try:
-                        entry["reduced_costs"][var.name] = float(
-                            model.getVarRedcost(var)
-                        )
-                    except Exception:
-                        entry["reduced_costs"][var.name] = None
-            except Exception:
-                pass
-
         existing = self.node_map.get(node_num, {})
         if existing:
             if entry["lp_obj"] is None and existing.get("lp_obj") is not None:
@@ -339,27 +279,17 @@ class NodeTracker(Eventhdlr):
             entry["was_solved"] = bool(
                 existing.get("was_solved", False) or entry.get("was_solved", False)
             )
-            entry["was_lp_solved"] = bool(
-                existing.get("was_lp_solved", False)
-                or entry.get("was_lp_solved", False)
-            )
             entry["was_deleted"] = bool(
                 existing.get("was_deleted", False) or entry.get("was_deleted", False)
             )
 
-            for key in (
-                "primal",
-                "duals_ineq",
-                "duals_eq",
-                "reduced_costs",
-                "node_bounds",
-            ):
-                current = entry.get(key, {}) or {}
-                previous = existing.get(key, {}) or {}
-                if previous:
-                    merged = dict(previous)
-                    merged.update({k: v for k, v in current.items() if v is not None})
-                    entry[key] = merged
+            previous_bounds = existing.get("node_bounds") or {}
+            if previous_bounds:
+                merged = dict(previous_bounds)
+                merged.update(
+                    {k: v for k, v in entry["node_bounds"].items() if v is not None}
+                )
+                entry["node_bounds"] = merged
 
             if not entry.get("conds") and existing.get("conds"):
                 entry["conds"] = list(existing["conds"])
@@ -457,6 +387,7 @@ class SCIPSolver(Solver):
         tighten_integer_projected_bounds=False,
         mimic_bnb_pool_filter=False,
         prefer_depth_first=True,
+        max_pool_size=None,
     ):
         self.verbose = verbose
         self.disable_heuristics = disable_heuristics
@@ -470,6 +401,7 @@ class SCIPSolver(Solver):
         self.tighten_integer_projected_bounds = tighten_integer_projected_bounds
         self.mimic_bnb_pool_filter = mimic_bnb_pool_filter
         self.prefer_depth_first = prefer_depth_first
+        self.max_pool_size = max_pool_size
         self.last_tree_snapshot = None
 
     @staticmethod
@@ -508,7 +440,6 @@ class SCIPSolver(Solver):
                     "lp_obj": info.get("lp_obj"),
                     "status": info.get("status"),
                     "was_solved": bool(info.get("was_solved", False)),
-                    "was_lp_solved": bool(info.get("was_lp_solved", False)),
                     "was_deleted": bool(info.get("was_deleted", False)),
                     "branching_decision": info.get("branching_decision"),
                     "conds": list(info.get("conds", [])),
@@ -612,7 +543,6 @@ class SCIPSolver(Solver):
                 f"depth={node.get('depth')} "
                 f"status={node.get('status')} "
                 f"was_solved={node.get('was_solved')} "
-                f"was_lp_solved={node.get('was_lp_solved')} "
                 f"was_deleted={node.get('was_deleted')} "
                 f"in_pool={node.get('in_pool')} "
                 f"lp_obj={lp_obj_str} "
@@ -873,8 +803,7 @@ class SCIPSolver(Solver):
 
     def _build_model(self, model, init_node):
         """Configure `model` and add the variables, objective and constraints of
-        init_node. Returns the variables and the inequality and equality
-        constraint names."""
+        init_node. Returns the variables."""
         c = init_node["c"]
         a_ub = init_node["A_ub"]
         b_ub = init_node["b_ub"]
@@ -903,7 +832,6 @@ class SCIPSolver(Solver):
             sense="minimize",
         )
 
-        ineq_cons_names = []
         if a_ub is not None and b_ub is not None:
             for row_idx in range(a_ub.shape[0]):
                 expr = quicksum(
@@ -911,13 +839,8 @@ class SCIPSolver(Solver):
                     for col_idx in range(n_vars)
                     if a_ub[row_idx, col_idx] != 0
                 )
-                cons = model.addCons(expr <= float(b_ub[row_idx]))
-                try:
-                    ineq_cons_names.append(model.getConsName(cons))
-                except Exception:
-                    ineq_cons_names.append(str(cons))
+                model.addCons(expr <= float(b_ub[row_idx]))
 
-        eq_cons_names = []
         if a_eq is not None and b_eq is not None:
             for row_idx in range(a_eq.shape[0]):
                 expr = quicksum(
@@ -925,13 +848,9 @@ class SCIPSolver(Solver):
                     for col_idx in range(n_vars)
                     if a_eq[row_idx, col_idx] != 0
                 )
-                cons = model.addCons(expr == float(b_eq[row_idx]))
-                try:
-                    eq_cons_names.append(model.getConsName(cons))
-                except Exception:
-                    eq_cons_names.append(str(cons))
+                model.addCons(expr == float(b_eq[row_idx]))
 
-        return vars_, ineq_cons_names, eq_cons_names
+        return vars_
 
     def solve_best(self, node, model):
         """Action of SCIP's optimal integer solution. Solves only the MILP: no
@@ -939,7 +858,7 @@ class SCIPSolver(Solver):
         self.last_tree_snapshot = None
         scip_model = Model("MILP")
         try:
-            vars_, _, _ = self._build_model(scip_model, node)
+            vars_ = self._build_model(scip_model, node)
             scip_model.optimize()
             if scip_model.getNSols() == 0:
                 raise NoSolutionError(
@@ -957,11 +876,9 @@ class SCIPSolver(Solver):
 
         model = Model("MILP")
         try:
-            _, ineq_cons_names, eq_cons_names = self._build_model(model, init_node)
+            self._build_model(model, init_node)
 
-            tracker = NodeTracker(
-                integer, ineq_cons_names=ineq_cons_names, eq_cons_names=eq_cons_names
-            )
+            tracker = NodeTracker(integer)
             try:
                 model.includeEventhdlr(
                     tracker, "node_tracker", "collect visited node LP info"
@@ -1045,7 +962,6 @@ class SCIPSolver(Solver):
                         "node_status": info.get("status"),
                         "branching_decision": info.get("branching_decision"),
                         "node_bounds": info.get("node_bounds"),
-                        "reduced_costs": info.get("reduced_costs"),
                         "status": "scip_node_lp",
                     }
                 ):
@@ -1074,6 +990,13 @@ class SCIPSolver(Solver):
                 )
                 for key, value in filter_stats.items():
                     pool_debug[f"bnb_filter_{key}"] = value
+
+            if self.max_pool_size is not None and len(results) > self.max_pool_size:
+                # Keep the candidates with the lowest objective, in their order.
+                keep = np.argsort([entry["fun"] for entry in results], kind="stable")
+                keep = np.sort(keep[: self.max_pool_size])
+                pool_debug["pool_cap_removed"] = len(results) - len(keep)
+                results = [results[idx] for idx in keep]
 
             pool_debug["post_filter_results"] = len(results)
 

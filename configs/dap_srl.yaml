@@ -39,6 +39,8 @@ scip_brute:
   tighten_integer_projected_bounds: false
   mimic_bnb_pool_filter: false
   prefer_depth_first: true
+  # Keep at most this many candidates (lowest objective); null keeps all.
+  max_pool_size: 50
 
 training:
   # options: vanilla_gradient | ppo
