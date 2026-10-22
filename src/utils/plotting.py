@@ -30,7 +30,6 @@ class Plotter:
         environment_metrics: dict[str, float],
         fathomed: bool,
         episode_done: bool,
-        expected_ep_reward: float | None = None,
     ) -> None:
         step_metrics = {
             "reward": reward,
@@ -68,11 +67,6 @@ class Plotter:
                 sum(self.episode_rewards) / self.window_size
             )
             self.episode_rewards = []
-        if expected_ep_reward is not None:
-            episode_metrics["expected_ep_reward"] = expected_ep_reward
-            episode_metrics["distance_from_opt_pol"] = (
-                expected_ep_reward - self.episode_reward
-            )
         self.run.log(episode_metrics)
         self.episode_reward = 0.0
         self.episode_environment_metrics = {}

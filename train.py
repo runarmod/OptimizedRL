@@ -22,7 +22,6 @@ from src.training_algorithm.training_algorithm_interface import (
 from src.training_algorithm.vanilla_gradient.vanilla_gradient import (
     VanillaGradientAlgorithm,
 )
-from src.utils.calc_expected import calc_expected_reward
 from src.utils.checkpoint import load_model_params, save_model_params
 from src.utils.evaluation import best_action, default_max_steps, run_episode
 from src.utils.plotting import Plotter
@@ -401,13 +400,6 @@ def main():
     runtime_device = resolve_runtime_device(config.device)
 
     model, env = build_model_and_env(config, project_root)
-    if config.comp_expected:
-        original_A = env.A
-        original_B = env.B
-        original_C = model.C
-        original_D = model.D
-        original_E = model.E
-
     original_model_params = model.get_params()
     state = env.state
 
@@ -426,13 +418,6 @@ def main():
     rollout_iters = training_algorithm.rollout_iters
     total_iters = config.total_iters
 
-    T = config.explicit_sol_time
-
-    comp_expected = config.comp_expected
-    comp_expected_every = config.comp_expected_every
-
-    expected_ep_reward = None
-    last_calced = 0
     params_path = args.params_dir / f"{plotter.run.id}.yaml"
     best_params_path = args.params_dir / f"{plotter.run.id}_best.yaml"
     validate_every = config.validation.every
@@ -453,22 +438,7 @@ def main():
                 best_score,
             )
 
-        if last_calced > comp_expected_every and comp_expected:
-            expected_ep_reward = calc_expected_reward(
-                -original_model_params.c,
-                original_A,
-                original_B,
-                original_C,
-                original_D,
-                original_E,
-                T,
-                state,
-                solver,
-            )
-            last_calced = 0
-
         for j in tqdm(range(rollout_iters), leave=False, desc="Rollout"):
-            last_calced += 1
             model.update_from_environment(env)
 
             decision = training_algorithm.act(state)
@@ -509,26 +479,10 @@ def main():
                 environment_metrics=environment_metrics,
                 fathomed=act_info.get("fathomed", False),
                 episode_done=episode_done,
-                expected_ep_reward=(expected_ep_reward if comp_expected else None),
             )
             if episode_done:
-                if comp_expected and expected_ep_reward is not None:
-                    expected_ep_reward = None
                 state, _ = env.reset()
                 model.update_from_environment(env)
-                if last_calced > comp_expected_every and comp_expected:
-                    expected_ep_reward = calc_expected_reward(
-                        -original_model_params.c,
-                        original_A,
-                        original_B,
-                        original_C,
-                        original_D,
-                        original_E,
-                        T,
-                        state,
-                        solver,
-                    )
-                    last_calced = 0
 
         update_result = training_algorithm.update(state)
         model_params = model.get_params()
