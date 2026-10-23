@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictConfig(BaseModel):
@@ -44,6 +44,21 @@ class ScipBruteConfig(StrictConfig):
         description="Keep at most this many candidates, those with the lowest "
         "objective. null keeps all.",
     )
+    min_pool_size: int | None = Field(
+        gt=0,
+        description="Add candidates made by one branching from the root LP until "
+        "there are at least this many. null adds none.",
+    )
+
+    @model_validator(mode="after")
+    def check_pool_sizes(self):
+        if (
+            self.min_pool_size is not None
+            and self.max_pool_size is not None
+            and self.min_pool_size > self.max_pool_size
+        ):
+            raise ValueError("min_pool_size must not exceed max_pool_size.")
+        return self
 
 
 class TrainingConfig(StrictConfig):

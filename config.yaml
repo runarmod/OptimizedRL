@@ -29,6 +29,8 @@ scip_brute:
   prefer_depth_first: true
   # Keep at most this many candidates (lowest objective); null keeps all.
   max_pool_size: 50
+  # Add one-branching LP candidates until there are this many; null adds none.
+  min_pool_size: 8
 
 training:
   # options: vanilla_gradient | ppo

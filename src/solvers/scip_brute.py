@@ -388,6 +388,7 @@ class SCIPSolver(Solver):
         mimic_bnb_pool_filter=False,
         prefer_depth_first=True,
         max_pool_size=None,
+        min_pool_size=None,
     ):
         self.verbose = verbose
         self.disable_heuristics = disable_heuristics
@@ -402,6 +403,7 @@ class SCIPSolver(Solver):
         self.mimic_bnb_pool_filter = mimic_bnb_pool_filter
         self.prefer_depth_first = prefer_depth_first
         self.max_pool_size = max_pool_size
+        self.min_pool_size = min_pool_size
         self.last_tree_snapshot = None
 
     @staticmethod
@@ -801,6 +803,60 @@ class SCIPSolver(Solver):
             "status": "lp_branch_relaxation",
         }
 
+    def _add_branch_candidates(self, init_node, pool_size, append_unique):
+        """Add LP candidates made by one branching from the root LP until
+        pool_size() reaches min_pool_size. Without them, a policy whose MILP
+        SCIP solves with (almost) no branching gets a pool of one candidate,
+        hence no policy gradient, and cannot leave that state.
+
+        Fractional variables are split as in branch and bound, most fractional
+        first. Integral variables are moved one step up or down, lowest reduced
+        cost first, so the added candidates are the closest alternatives.
+        Returns the number of candidates added."""
+        root = self._solve_lp_with_conds(init_node, [])
+        if root is None:
+            return 0
+
+        x = root["x"]
+        reduced_costs = np.abs(root["lower"]) + np.abs(root["upper"])
+        ranked = []
+        for idx, is_integer in enumerate(init_node["integer"]):
+            if not is_integer:
+                continue
+            frac = abs(x[idx] - round(x[idx]))
+            if frac > 1e-6:
+                down, up = np.floor(x[idx]), np.ceil(x[idx])
+                ranked.append((0, -frac, idx, down, up))
+            else:
+                value = round(x[idx])
+                ranked.append((1, reduced_costs[idx], idx, value - 1, value + 1))
+        ranked.sort()
+
+        cond_sets = [[]]
+        for _, _, idx, down, up in ranked:
+            cond_sets.append([(idx, "<=", float(down))])
+            cond_sets.append([(idx, ">=", float(up))])
+
+        added = 0
+        for conds in cond_sets:
+            if pool_size() >= self.min_pool_size:
+                break
+            lp_solution = self._solve_lp_with_conds(init_node, conds)
+            if lp_solution is None or not self._is_valid_native_candidate(
+                lp_solution["x"], lp_solution["fun"]
+            ):
+                continue
+            entry = dict(lp_solution)
+            entry["fathomed"] = True
+            entry["depth"] = len(conds)
+            entry["status"] = "min_pool_branch"
+            if self.tighten_integer_projected_bounds:
+                entry["bounds"] = self._project_integer_bounds(
+                    entry["x"], entry["bounds"], init_node["integer"]
+                )
+            added += append_unique(entry)
+        return added
+
     def _build_model(self, model, init_node):
         """Configure `model` and add the variables, objective and constraints of
         init_node. Returns the variables."""
@@ -990,6 +1046,11 @@ class SCIPSolver(Solver):
                 )
                 for key, value in filter_stats.items():
                     pool_debug[f"bnb_filter_{key}"] = value
+
+            if self.min_pool_size is not None and len(results) < self.min_pool_size:
+                pool_debug["min_pool_added"] = self._add_branch_candidates(
+                    init_node, lambda: len(results), _append_unique
+                )
 
             if self.max_pool_size is not None and len(results) > self.max_pool_size:
                 # Keep the candidates with the lowest objective, in their order.
