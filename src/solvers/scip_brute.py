@@ -908,8 +908,7 @@ class SCIPSolver(Solver):
             for row_idx in range(a_ub.shape[0]):
                 expr = quicksum(
                     float(a_ub[row_idx, col_idx]) * vars_[col_idx]
-                    for col_idx in range(n_vars)
-                    if a_ub[row_idx, col_idx] != 0
+                    for col_idx in np.flatnonzero(a_ub[row_idx])
                 )
                 cons = model.addCons(expr <= float(b_ub[row_idx]))
                 try:
@@ -922,8 +921,7 @@ class SCIPSolver(Solver):
             for row_idx in range(a_eq.shape[0]):
                 expr = quicksum(
                     float(a_eq[row_idx, col_idx]) * vars_[col_idx]
-                    for col_idx in range(n_vars)
-                    if a_eq[row_idx, col_idx] != 0
+                    for col_idx in np.flatnonzero(a_eq[row_idx])
                 )
                 cons = model.addCons(expr == float(b_eq[row_idx]))
                 try:
