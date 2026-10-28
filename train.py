@@ -329,6 +329,18 @@ def sanitize_env_action(env, action):
     return action_arr
 
 
+def validation_episode(
+    model: Model, solver: Solver, env: Env, seed: int, max_steps: int
+) -> float:
+    """Episode reward of the most probable actions."""
+
+    def act() -> np.ndarray:
+        model.update_from_environment(env)
+        return sanitize_env_action(env, best_action(model, solver))
+
+    return run_episode(env, act, seed, max_steps)["ep_reward"]
+
+
 def validate(
     model: Model, solver: Solver, config: AppConfig, env: Env
 ) -> dict[str, float]:
@@ -337,17 +349,13 @@ def validate(
     validation = config.validation
     max_steps = default_max_steps(None, config)
 
-    def act() -> np.ndarray:
-        model.update_from_environment(env)
-        return sanitize_env_action(env, best_action(model, solver))
-
     rewards = {}
     num_episodes = validation.episodes * 2
     print(f"\nValidating on {num_episodes} episodes...")
     for split, first_seed in validation.splits.items():
         seeds = range(first_seed, first_seed + validation.episodes)
         episodes = [
-            run_episode(env, act, seed, max_steps)["ep_reward"] for seed in seeds
+            validation_episode(model, solver, env, seed, max_steps) for seed in seeds
         ]
         rewards[split] = float(np.mean(episodes))
     return rewards
