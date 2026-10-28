@@ -30,7 +30,12 @@ config=${CONFIG:-configs/dap_srl.yaml}
 max_jobs=${JOBS:-${#seeds[@]}}
 run_dir=${RUN_DIR:-runs/srl_dap_$(date +%Y%m%d_%H%M%S)}
 
-# One core per run: SCIP is single-threaded and the networks are small.
+# Validation runs its episodes in os.process_cpu_count() processes, so share
+# the cores between the runs (before the export below: nproc honours it).
+cores=$(nproc)
+cores_per_run=$(( cores > max_jobs ? cores / max_jobs : 1 ))
+
+# One thread per process: SCIP is single-threaded and the networks are small.
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 # Keep the progress bars in the logs short.
 export TQDM_MININTERVAL=60
@@ -52,7 +57,7 @@ train_seed() {
     fi
 
     echo "$(date '+%F %T') seed $seed started"
-    if uv run python train.py --config "$seed_dir/config.yaml" \
+    if PYTHON_CPU_COUNT=$cores_per_run uv run python train.py --config "$seed_dir/config.yaml" \
         --params-dir "$seed_dir" > "$seed_dir/train.log" 2>&1; then
         touch "$seed_dir/finished"
         echo "$(date '+%F %T') seed $seed finished"

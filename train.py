@@ -1,5 +1,7 @@
 import argparse
 import copy
+from concurrent.futures import ProcessPoolExecutor
+from itertools import repeat
 from pathlib import Path
 
 import numpy as np
@@ -345,20 +347,27 @@ def validate(
     model: Model, solver: Solver, config: AppConfig, env: Env
 ) -> dict[str, float]:
     """Mean episode reward of the most probable actions on each validation
-    split: `validation.episodes` episodes from the split's first seed."""
+    split: `validation.episodes` episodes from the split's first seed. The
+    episodes run in os.process_cpu_count() processes, on copies of model,
+    solver and env."""
     validation = config.validation
     max_steps = default_max_steps(None, config)
 
-    rewards = {}
     num_episodes = validation.episodes * 2
     print(f"\nValidating on {num_episodes} episodes...")
-    for split, first_seed in validation.splits.items():
-        seeds = range(first_seed, first_seed + validation.episodes)
-        episodes = [
-            validation_episode(model, solver, env, seed, max_steps) for seed in seeds
-        ]
-        rewards[split] = float(np.mean(episodes))
-    return rewards
+    with ProcessPoolExecutor() as pool:
+        episodes = {
+            split: pool.map(
+                validation_episode,
+                repeat(model),
+                repeat(solver),
+                repeat(env),
+                range(first_seed, first_seed + validation.episodes),
+                repeat(max_steps),
+            )
+            for split, first_seed in validation.splits.items()
+        }
+        return {split: float(np.mean(list(r))) for split, r in episodes.items()}
 
 
 def validate_and_keep_best(
