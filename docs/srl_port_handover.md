@@ -8,9 +8,8 @@ every check except one open question about the spread across seeds. Phase 4
 
 ## State of the branch
 
-- Branch `srl-port`, created from `main` at `1b98576`. **Nothing is committed
-  yet.** All work is in the working tree of
-  `.claude/worktrees/srl-porting-feasibility-c63c3a`.
+- Branch `srl-port`, created from `main` at `1b98576`, committed and pushed
+  to `origin/srl-port`. No pull request yet.
 - New files: `src/srl/`, `tests/`, `configs/srl_dap.yaml`,
   `scripts/run_srl_port.sh`, `docs/srl_port_plan.md`, this file.
 - Changed files:
@@ -146,24 +145,23 @@ Other observations:
 
    Cheap diagnostic: compare the `history.csv` curves of seed 41 with the
    others.
-2. **Commit the branch.** Nothing is committed yet.
-3. **Phase 4, the MILP-PPO side.** Run `scripts/run_srl_comparison.sh` (it
+2. **Phase 4, the MILP-PPO side.** Run `scripts/run_srl_comparison.sh` (it
    trains our MILP model with PPO). Set `validation.every: 1` in
    `configs/dap_srl.yaml` first, so both algorithms use the same protocol
    (it is 10 now). It uses `scip_brute` and is much slower than SRL; check
    the time per run before starting all 10 seeds.
-4. **Compare both in one table:**
+3. **Compare both in one table:**
 
    ```bash
    uv run python compare_srl_paper.py runs/srl_dap_<timestamp>/seed_*/*_best.yaml \
        --srl runs/srl_port_10seeds/seed_*/best.pt --average
    ```
 
-5. **Extend `compare_srl_paper.py`** with a training-time column
+4. **Extend `compare_srl_paper.py`** with a training-time column
    (`train_time_s` is in every SRL `best.pt`; MILP-PPO needs its own
    timing), and a paired comparison (per-episode revenue difference with a
    bootstrap confidence interval).
-6. **Optional:** SRL's training on our `DapModel` restricted to the
+5. **Optional:** SRL's training on our `DapModel` restricted to the
    immediate-score term (`w = 0`, no value pieces), which is the same policy
    class as SRL's actor. Also the plan's ablations (`dynamic: false`, no
    clipping) if a gate needs debugging.
