@@ -1,0 +1,45 @@
+# SRL on DAP with the setup of the SRL codebase (scripts/DAP/03_SRL.jl) and
+# Table 7 of the paper. Train with
+#   uv run python -m src.srl.train --config configs/srl_dap.yaml --out runs/srl/seed_14 --seed 14
+# or all ten paper seeds with scripts/run_srl_port.sh.
+name: "dap srl"
+seed: 14
+torch_threads: 1
+
+env:
+  n_items: 20
+  assortment_size: 4
+  initial_inventory: 200
+  max_steps: 80
+  n_train_seeds: 100
+
+validation:
+  episodes: 30
+  splits:
+    train: 1
+    val: 1001
+
+init:
+  reward_range: [100.0, 200.0]
+  episodes: 10
+  max_draws: 10000
+
+episodes: 200
+iterations: 100
+batch_size: 4
+buffer_size: 8000
+gamma: 0.99
+
+dynamic: true
+future_critic_passes: 50
+
+target_samples: 40
+# Variances, as the SRL codebase uses them (MvNormal(θ, σ * I)).
+sigma_f: {start: 2.0, end: 1.0}
+sigma_b: {start: 2.0, end: 1.0}
+temperature: {start: 1.0, end: 1.0}
+lr: {start: 1.0e-3, end: 5.0e-4}
+grad_clip: 1.0e-3
+
+fy_epsilon: 1.0
+fy_samples: 20

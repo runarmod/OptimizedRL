@@ -7,6 +7,10 @@ paper's results.
 
     uv run python compare_srl_paper.py params/<run id>.yaml [more params ...]
 
+Policies trained with our SRL port (src/srl) are added with --srl:
+
+    uv run python compare_srl_paper.py --srl runs/srl/seed_*/best.pt --average
+
 Our simulator draws its instances with numpy instead of Julia's MersenneTwister,
 so the same seed gives a different instance and absolute revenues do not match
 the paper. Compare the columns relative to greedy and expert instead:
@@ -19,7 +23,7 @@ the paper. Compare the columns relative to greedy and expert instead:
                    of the expert's gain over greedy that a policy reaches.
 
 The paper averages ten trained models per episode before comparing. Pass the
-params files of several seeds with --average to do the same.
+params files (or SRL checkpoints) of several seeds with --average to do the same.
 """
 
 import argparse
@@ -32,6 +36,7 @@ import numpy as np
 
 from evaluate import config_for_params, evaluate_dap_baselines, evaluate_params
 from src.config.config_loader import load_config
+from src.srl.evaluate import evaluate_srl
 
 # Table 11 of the paper: mean episode revenue on the (train, test) episodes.
 # SIL, PPO and SRL are averaged over ten random model initializations.
@@ -48,6 +53,14 @@ SPLIT_FIRST_SEED = {"train": 1, "test": 2001}
 SPLITS = tuple(SPLIT_FIRST_SEED)
 
 AVERAGE_LABEL = "average"
+SRL_AVERAGE_LABEL = "srl_average"
+
+
+def srl_label(checkpoint: Path) -> str:
+    """Label of an SRL checkpoint: its run directory, plus the file name unless
+    it is the best checkpoint."""
+    run = checkpoint.resolve().parent.name
+    return f"srl_{run}" if checkpoint.stem == "best" else f"srl_{run}_{checkpoint.stem}"
 
 
 def revenue_by_run(rows: list[dict], metric: str) -> dict[str, np.ndarray]:
@@ -136,6 +149,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("params", nargs="*", type=Path, help="Saved DAP params files.")
     parser.add_argument(
+        "--srl",
+        nargs="+",
+        type=Path,
+        default=[],
+        help="Checkpoints of our SRL port (src/srl), e.g. runs/srl/seed_*/best.pt.",
+    )
+    parser.add_argument(
         "--episodes",
         type=int,
         default=100,
@@ -145,8 +165,8 @@ def main():
     parser.add_argument(
         "--average",
         action="store_true",
-        help="Also report the per-episode mean over all params files, as the "
-        "paper does over its ten model seeds.",
+        help="Also report the per-episode mean over all params files, and over "
+        "all SRL checkpoints, as the paper does over its ten model seeds.",
     )
     parser.add_argument(
         "--metric",
@@ -172,14 +192,19 @@ def main():
         if config.problem != "dap":
             parser.error(f"{params_path} was trained on '{config.problem}', not 'dap'")
         runs.append((params_path.stem, config))
-    if args.average and len(runs) < 2:
-        parser.error("--average needs at least two params files")
+    srl_runs = [(srl_label(path), path.resolve()) for path in args.srl]
+    labels = [label for label, _ in runs + srl_runs]
+    if len(set(labels)) != len(labels):
+        parser.error(f"two runs share a label: {labels}")
+    if args.average and len(runs) < 2 and len(srl_runs) < 2:
+        parser.error("--average needs at least two params files or SRL checkpoints")
 
     split_seeds = {
         split: list(range(first_seed, first_seed + args.episodes))
         for split, first_seed in SPLIT_FIRST_SEED.items()
     }
-    pool = ProcessPoolExecutor(max_workers=max(1, min(args.jobs, len(runs) * 2)))
+    n_jobs = (len(runs) + len(srl_runs)) * len(args.splits)
+    pool = ProcessPoolExecutor(max_workers=max(1, min(args.jobs, n_jobs)))
     evaluations = {
         (split, label): pool.submit(
             evaluate_params,
@@ -191,6 +216,16 @@ def main():
         )
         for split in args.splits
         for label, config in runs
+    } | {
+        (split, label): pool.submit(
+            evaluate_srl,
+            label,
+            checkpoint,
+            split_seeds[split],
+            base_config.dap_env.max_steps,
+        )
+        for split in args.splits
+        for label, checkpoint in srl_runs
     }
 
     all_rows = []
@@ -199,13 +234,17 @@ def main():
         rows = evaluate_dap_baselines(
             base_config, split_seeds[split], base_config.dap_env.max_steps
         )
-        for label, _ in runs:
+        for label, _ in runs + srl_runs:
             rows.extend(evaluations[split, label].result())
         revenue = revenue_by_run(rows, args.metric)
-        if args.average:
-            revenue[AVERAGE_LABEL] = np.mean(
-                [revenue[label] for label, _ in runs], axis=0
-            )
+        for average_label, averaged in (
+            (AVERAGE_LABEL, runs),
+            (SRL_AVERAGE_LABEL, srl_runs),
+        ):
+            if args.average and len(averaged) >= 2:
+                revenue[average_label] = np.mean(
+                    [revenue[label] for label, _ in averaged], axis=0
+                )
         print_split(split, summarize_split(split, revenue), args.episodes)
         all_rows.extend({"split": split, **row} for row in rows)
     pool.shutdown()
