@@ -31,9 +31,14 @@ and the mean over the runs of an average. The paper's is from its Table 1.
 
 All policies run on the same episodes, so two of them can be compared episode
 by episode: --paired A B prints the mean revenue difference A - B with a
-bootstrap confidence interval. An average label resamples its model seeds as
-well as the episodes. With --average, the MILP and SRL averages are paired by
-default.
+bootstrap confidence interval and p-value. An average label resamples its
+model seeds as well as the episodes. With --average, the MILP and SRL averages
+are paired by default. When a side has several models, tests on the mean
+revenue of each model follow, which treat the seeds as the replicates: Welch's
+t-test and Mann-Whitney U for two averages, the one-sample t-test and Wilcoxon
+signed-rank against a single policy. Run once with --metric expected_revenue
+too: it removes the noise of the sampled purchases. Each split and metric is
+a separate test.
 """
 
 import argparse
@@ -43,6 +48,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
+from scipy.stats import mannwhitneyu, ttest_1samp, ttest_ind, wilcoxon
 
 from evaluate import config_for_params, evaluate_dap_baselines, evaluate_params
 from src.config.config_loader import load_config
@@ -96,10 +102,16 @@ def mean_minutes(minutes: list[float | None]) -> float | None:
 
 def paired_difference(
     a: np.ndarray, b: np.ndarray, rng: np.random.Generator
-) -> tuple[float, float, float]:
-    """Mean per-episode difference of policies a - b and its bootstrap confidence
-    interval. a and b hold one row of per-episode revenue per model seed; the
-    bootstrap resamples the episodes (shared by a and b) and each one's seeds."""
+) -> tuple[float, float, float, float]:
+    """Mean per-episode difference of policies a - b, its bootstrap confidence
+    interval and two-sided bootstrap p-value.
+
+    a and b hold one row of per-episode revenue per model seed. The bootstrap
+    resamples the episodes (shared by a and b) and each one's seeds. The p-value
+    is twice the share of bootstrap differences on the far side of 0, so
+    p < 1 - CONFIDENCE exactly when the confidence interval excludes 0. It
+    cannot resolve values below 2 / BOOTSTRAP_SAMPLES.
+    """
     n_episodes = a.shape[1]
     diffs = np.empty(BOOTSTRAP_SAMPLES)
     for i in range(BOOTSTRAP_SAMPLES):
@@ -111,7 +123,39 @@ def paired_difference(
         )
     tail = 100 * (1 - CONFIDENCE) / 2
     low, high = np.percentile(diffs, [tail, 100 - tail])
-    return float(a.mean() - b.mean()), float(low), float(high)
+    p_value = min(1.0, 2 * min((diffs <= 0).mean(), (diffs >= 0).mean()))
+    return float(a.mean() - b.mean()), float(low), float(high), float(p_value)
+
+
+def seed_level_tests(a: np.ndarray, b: np.ndarray) -> dict[str, float]:
+    """Two-sided p-values of tests on the mean revenue of each model.
+
+    The models of a policy (one row of a or b each) are its independent
+    replicates, so these tests count seeds, not episodes. Two groups of models
+    get Welch's t-test and the Mann-Whitney U test. One group against a single
+    model (e.g. greedy) gets the one-sample t-test and the Wilcoxon signed-rank
+    test of the differences. Single models against each other get no test.
+    """
+    a_means, b_means = a.mean(1), b.mean(1)
+    if len(a_means) >= 2 and len(b_means) >= 2:
+        return {
+            "Welch t-test": ttest_ind(a_means, b_means, equal_var=False).pvalue,
+            "Mann-Whitney U": mannwhitneyu(
+                a_means, b_means, alternative="two-sided"
+            ).pvalue,
+        }
+    if len(a_means) >= 2 or len(b_means) >= 2:
+        differences = a_means - b_means  # one side broadcasts its single model
+        return {
+            "one-sample t-test": ttest_1samp(differences, 0.0).pvalue,
+            "Wilcoxon signed-rank": wilcoxon(differences).pvalue,
+        }
+    return {}
+
+
+def format_p(p_value: float, resolution: float = 0.0) -> str:
+    floor = max(resolution, 1e-4)
+    return f"p < {floor:g}" if p_value < floor else f"p = {p_value:.4f}"
 
 
 def print_paired(
@@ -123,13 +167,19 @@ def print_paired(
     for a_label, b_label in pairs:
         a = np.array([revenue[label] for label in members.get(a_label, [a_label])])
         b = np.array([revenue[label] for label in members.get(b_label, [b_label])])
-        mean, low, high = paired_difference(a, b, rng)
+        mean, low, high, p_value = paired_difference(a, b, rng)
         wins = int((a.mean(0) > b.mean(0)).sum())
         print(
             f"\n{a_label} - {b_label}: {mean:+.1f} revenue per episode "
-            f"({100 * CONFIDENCE:.0f} % CI {low:+.1f} to {high:+.1f}); "
+            f"({100 * CONFIDENCE:.0f} % CI {low:+.1f} to {high:+.1f}, bootstrap "
+            f"{format_p(p_value, 2 / BOOTSTRAP_SAMPLES)}); "
             f"{a_label} is better on {wins} of {a.shape[1]} episodes"
         )
+        if tests := seed_level_tests(a, b):
+            print(
+                f"  per-model mean revenue ({len(a)} vs {len(b)} models): "
+                + ", ".join(f"{name} {format_p(p)}" for name, p in tests.items())
+            )
 
 
 def revenue_by_run(rows: list[dict], metric: str) -> dict[str, np.ndarray]:

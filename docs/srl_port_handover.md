@@ -46,7 +46,8 @@ server, see [Server runs](#server-runs).
 | `src/srl/evaluate.py` | `evaluate_srl` (rows like `evaluate_params`), `make_env`, and a CLI |
 | `src/srl/checkpoint.py` | `torch.save` of the networks, config and metadata |
 | `src/srl/checks.py` | `sil` and `critic` checks |
-| `tests/test_srl_components.py`, `tests/test_srl_training.py` | 22 tests |
+| `tests/test_srl_components.py`, `tests/test_srl_training.py` | 22 tests of the SRL port |
+| `tests/test_compare_statistics.py` | 9 tests of the statistics in `compare_srl_paper.py` |
 
 Commands:
 
@@ -65,8 +66,19 @@ uv run python -m src.srl.checks critic
 - `--srl ...`: SRL checkpoints.
 - `--average`: per-episode mean over the seeds, separately for MILP and SRL.
 - `--paired A B`: the mean per-episode revenue difference A − B with a 95 %
-  bootstrap CI over episodes and model seeds. With `--average`, the MILP and
-  SRL averages are paired by default.
+  bootstrap CI over episodes and model seeds, and a bootstrap p-value. With
+  `--average`, the MILP and SRL averages are paired by default.
+- Seed-level tests follow when a side of a pair has several models. They
+  test each model's mean revenue, so the seeds are the replicates:
+  - two averages: Welch's t-test and Mann-Whitney U,
+  - an average against a single policy such as greedy: the one-sample t-test
+    and Wilcoxon signed-rank.
+
+  With 10 seeds the smallest possible p-value is about 0.002 for Wilcoxon
+  and about 0.0002 for Mann-Whitney, and the bootstrap cannot resolve values
+  below 0.0002.
+- `--metric expected_revenue`: compares the expected revenue under the
+  customer model instead of the sampled purchases.
 - `train min` column: from `train_time_s` next to a params file, or inside
   an SRL checkpoint.
 
@@ -200,9 +212,23 @@ SRL is rerun on the same server so that the training times are comparable.
        --csv runs/final_comparison.csv
    ```
 
-   This prints both algorithms next to the paper, with training time and the
-   paired difference between the CORL and SRL averages. Write up the results
-   here.
+   This prints both algorithms next to the paper, with training time, the
+   paired difference between the CORL and SRL averages and the seed-level
+   tests. Run it a second time with `--metric expected_revenue`, then write
+   up the results here.
+
+   How to read the results:
+   - The test split (seeds 2001-2100) supports claims about generalization.
+     The train split is the training instances.
+   - The seed-level tests are the conservative measure, since 10 seeds per
+     algorithm are the independent replicates.
+   - With the spread of our SRL seeds (a standard deviation of about 9 in
+     mean test revenue), 10 vs 10 seeds detect a difference of about 12
+     revenue per episode (about 2 %) with 80 % power. A smaller difference
+     that is not significant is inconclusive, not evidence of equality.
+   - The two launchers ran at the same time on the server, so `train min` is
+     inflated by the competition for CPU and not a fair timing comparison.
+     The revenue results are unaffected.
 2. **Optional:** SRL's training on our `DapModel` restricted to the
    immediate-score term (`w = 0`, no value pieces), which is the same policy
    class as SRL's actor. Also the plan's ablations (`dynamic: false`, no
