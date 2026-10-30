@@ -52,8 +52,11 @@ train_seed() {
     fi
 
     echo "$(date '+%F %T') seed $seed started"
+    local start=$SECONDS
     if uv run python train.py --config "$seed_dir/config.yaml" \
         --params-dir "$seed_dir" > "$seed_dir/train.log" 2>&1; then
+        # Wall-clock training time, read by compare_srl_paper.py.
+        echo $(( SECONDS - start )) > "$seed_dir/train_time_s"
         touch "$seed_dir/finished"
         echo "$(date '+%F %T') seed $seed finished"
     else

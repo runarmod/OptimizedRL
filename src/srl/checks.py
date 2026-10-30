@@ -106,11 +106,11 @@ def check_sil(config: SrlConfig, epochs: int, lr: float) -> None:
                 loss = perturbed_fenchel_young_loss(
                     theta, torch.as_tensor(assortment)[None], k, config.fy_epsilon, noise
                 ).sum()
-                agent._step(optimizer, agent.actor, loss)
-            agent._linear_actor = None
+                agent.optimizer_step(optimizer, agent.actor, loss)
+            agent.actor_updated()
         print(f"epoch {epoch}: last validation score {score:.1f}")
     agent.actor.load_state_dict(best_state)
-    agent._linear_actor = None
+    agent.actor_updated()
     print(f"Best validation score {best_score:.1f} in epoch {best_epoch}")
     report(config, "SIL", agent.best_assortment)
 
@@ -200,7 +200,7 @@ def check_critic(config: SrlConfig, iterations: int, n_candidates: int) -> None:
             torch.as_tensor([s["revenue"] for s in batch], dtype=torch.float32),
             delta=HUBER_DELTA,
         )
-        agent._step(optimizer, agent.reward_critic, loss)
+        agent.optimizer_step(optimizer, agent.reward_critic, loss)
         if it % (iterations // 5) == 0:
             print(f"iteration {it}: held-out Huber loss {loss_on(held_out):.2f}")
     print("after: Spearman pooled/within {:.3f} / {:.3f}".format(

@@ -1,0 +1,7 @@
+# SRL on DAP as configs/srl_dap.yaml (the defaults of SrlConfig), but validated
+# before every 10th training episode only, as configs/dap_srl.yaml validates the
+# MILP policy. Use it when comparing with MILP-PPO runs of that config:
+#   CONFIG=configs/srl_dap_val10.yaml bash scripts/run_srl_port.sh
+name: "dap srl val10"
+validation:
+  every: 10

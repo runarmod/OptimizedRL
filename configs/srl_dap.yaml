@@ -14,6 +14,7 @@ env:
   n_train_seeds: 100
 
 validation:
+  every: 1
   episodes: 30
   splits:
     train: 1

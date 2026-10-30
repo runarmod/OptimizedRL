@@ -2,8 +2,9 @@
 
     uv run python -m src.srl.train --config configs/srl_dap.yaml --out runs/srl/seed_14
 
-Before every training episode the policy is validated on each validation split,
-and the one with the best mean so far is saved to <out>/best.pt. The final
+Before every `validation.every`-th training episode (every one by default) the
+policy is validated on each validation split, and the one with the best mean so
+far is saved to <out>/best.pt. The final
 policy is saved to <out>/final.pt and one row per episode to <out>/history.csv.
 """
 
@@ -83,10 +84,16 @@ def train(config: SrlConfig, out_dir: Path) -> Path:
     with history_path.open("w", newline="") as history_file:
         writer = None
         for episode in tqdm(range(1, config.episodes + 1), desc="Episodes"):
-            rewards = validate(agent, validation_env, config)
-            score = sum(rewards.values()) / len(rewards)
+            # Episodes without validation leave its columns empty.
+            validated = (episode - 1) % config.validation.every == 0
+            if validated:
+                rewards = validate(agent, validation_env, config)
+                score = sum(rewards.values()) / len(rewards)
+            else:
+                rewards = dict.fromkeys(config.validation.splits)
+                score = None
             # Ties keep the later model, as `reward_comparison` does.
-            is_best = best_score is None or score >= best_score
+            is_best = validated and (best_score is None or score >= best_score)
             if is_best:
                 best_score, best_episode = score, episode
                 save_checkpoint(
@@ -116,11 +123,12 @@ def train(config: SrlConfig, out_dir: Path) -> Path:
                 writer.writeheader()
             writer.writerow(row)
             history_file.flush()
-            tqdm.write(
-                f"episode {episode}: "
-                + ", ".join(f"{s} {r:.1f}" for s, r in rewards.items())
-                + (" (best)" if is_best else "")
-            )
+            if validated:
+                tqdm.write(
+                    f"episode {episode}: "
+                    + ", ".join(f"{s} {r:.1f}" for s, r in rewards.items())
+                    + (" (best)" if is_best else "")
+                )
 
     train_time = time.perf_counter() - start
     save_checkpoint(

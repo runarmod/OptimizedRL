@@ -86,9 +86,22 @@ def test_training_is_deterministic_and_best_checkpoint_reloads(tmp_path):
     assert history == read_history(tmp_path / "b" / "history.csv")
     assert len(history) == config.episodes
 
+    assert all(row["score"] for row in history)
+
     saved = read_checkpoint(best)
     assert saved["train_time_s"] > 0
     agent, _ = load_agent(best)
     rewards = validate(agent, make_env(config.env), config)
     best_row = history[saved["episode"] - 1]
     assert float(best_row["score"]) == pytest.approx(np.mean(list(rewards.values())))
+
+
+def test_validation_every(tmp_path):
+    config = tiny_config(episodes=4)
+    config = config.model_copy(
+        update={"validation": config.validation.model_copy(update={"every": 3})}
+    )
+    best = train(config, tmp_path)
+    history = read_history(tmp_path / "history.csv")
+    assert [bool(row["score"]) for row in history] == [True, False, False, True]
+    assert read_checkpoint(best)["episode"] in (1, 4)

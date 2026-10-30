@@ -87,6 +87,10 @@ class SrlAgent:
         features = np.asarray(observation, dtype=float).reshape(self.n_items, -1)
         return features @ w + b
 
+    def actor_updated(self) -> None:
+        """Call after changing the actor's weights, so `scores` uses them."""
+        self._linear_actor = None
+
     def best_assortment(self, observation: np.ndarray) -> np.ndarray:
         """Deterministic policy: top-K of the unperturbed scores."""
         return top_k_numpy(self.scores(observation), self.assortment_size)
@@ -154,7 +158,10 @@ class SrlAgent:
             values = self.critic_values(features, candidates)
             return softmax_target(candidates, values, self.temperature)
 
-    def _step(self, optimizer: torch.optim.Optimizer, module: nn.Module, loss: torch.Tensor) -> None:
+    def optimizer_step(
+        self, optimizer: torch.optim.Optimizer, module: nn.Module, loss: torch.Tensor
+    ) -> None:
+        """Backpropagate loss, clip the gradients elementwise and step."""
         optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_value_(module.parameters(), self.config.grad_clip)
@@ -182,13 +189,13 @@ class SrlAgent:
             actor_loss = perturbed_fenchel_young_loss(
                 self.actor(features), targets, self.assortment_size, cfg.fy_epsilon, fy_noise
             ).sum()
-            self._step(self.actor_opt, self.actor, actor_loss)
-            self._linear_actor = None
+            self.optimizer_step(self.actor_opt, self.actor, actor_loss)
+            self.actor_updated()
 
             reward_loss = huber_loss(
                 self.reward_critic(features, assortments), revenues, delta=HUBER_DELTA
             )
-            self._step(self.reward_critic_opt, self.reward_critic, reward_loss)
+            self.optimizer_step(self.reward_critic_opt, self.reward_critic, reward_loss)
 
             actor_losses.append(actor_loss.item())
             reward_losses.append(reward_loss.item())
@@ -220,7 +227,7 @@ class SrlAgent:
                     targets[idx],
                     delta=HUBER_DELTA,
                 )
-                self._step(self.future_critic_opt, self.future_critic, loss)
+                self.optimizer_step(self.future_critic_opt, self.future_critic, loss)
                 losses.append(loss.item())
         return float(np.mean(losses)) if losses else float("nan")
 

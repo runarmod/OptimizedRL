@@ -36,6 +36,12 @@ class SrlEnvConfig(StrictConfig):
 
 
 class SrlValidationConfig(StrictConfig):
+    every: int = Field(
+        1,
+        gt=0,
+        description="Training episodes between validations, from the first. 1 is "
+        "the SRL protocol; match validation.every of the policy compared with.",
+    )
     episodes: int = Field(30, gt=0, description="Episodes per validation split.")
     splits: dict[str, int] = Field(
         default_factory=lambda: {"train": 1, "val": 1001},
