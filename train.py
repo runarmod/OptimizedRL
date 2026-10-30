@@ -146,6 +146,7 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
     state_size = config.model.state_size
     action_size = config.model.action_size
     np.random.seed(effective_seed)
+    torch.manual_seed(effective_seed)
     num_cons = config.model.n_cons
     num_pieces = config.model.n_value_func
     aA = np.random.uniform(0, 0.1, size=(num_pieces, state_size))
