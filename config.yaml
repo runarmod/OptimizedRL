@@ -1,4 +1,4 @@
-name: "dap tr w/greedy+expert baselines"
+name: "DAP"
 
 wandb_mode: "online"
 
@@ -35,8 +35,8 @@ training:
   solver: "scip_brute"
 
 validation:
-  every: 0
-  episodes: 2
+  every: 10
+  episodes: 30
   splits:
     train: 1
     val: 1001
@@ -124,7 +124,7 @@ ppo:
   obj_norm_eps: 1.0e-8
   opt_epochs: 20
   mini_batch_size: 32
-  rollout_iters: 64
+  rollout_iters: 80
   target_kl: 0.01
   normalize_adv: True
   nn_sample: True
@@ -142,8 +142,8 @@ vanilla_gradient:
     sample: False
     num_samples: 0.3
   train_iters: 20
-  rollout_iters: 64
+  rollout_iters: 80
 
-total_iters: 100000
+total_iters: 200
 terminal_log_every: 100
-save_every: 20
+save_every: 10
