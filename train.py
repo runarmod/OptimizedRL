@@ -1,5 +1,7 @@
 import argparse
 import copy
+from concurrent.futures import ProcessPoolExecutor
+from itertools import repeat
 from pathlib import Path
 
 import numpy as np
@@ -144,6 +146,7 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
     state_size = config.model.state_size
     action_size = config.model.action_size
     np.random.seed(effective_seed)
+    torch.manual_seed(effective_seed)
     num_cons = config.model.n_cons
     num_pieces = config.model.n_value_func
     aA = np.random.uniform(0, 0.1, size=(num_pieces, state_size))
@@ -329,28 +332,43 @@ def sanitize_env_action(env, action):
     return action_arr
 
 
-def validate(
-    model: Model, solver: Solver, config: AppConfig, env: Env
-) -> dict[str, float]:
-    """Mean episode reward of the most probable actions on each validation
-    split: `validation.episodes` episodes from the split's first seed."""
-    validation = config.validation
-    max_steps = default_max_steps(None, config)
+def validation_episode(
+    model: Model, solver: Solver, env: Env, seed: int, max_steps: int
+) -> float:
+    """Episode reward of the most probable actions."""
 
     def act() -> np.ndarray:
         model.update_from_environment(env)
         return sanitize_env_action(env, best_action(model, solver))
 
-    rewards = {}
+    return run_episode(env, act, seed, max_steps)["ep_reward"]
+
+
+def validate(
+    model: Model, solver: Solver, config: AppConfig, env: Env
+) -> dict[str, float]:
+    """Mean episode reward of the most probable actions on each validation
+    split: `validation.episodes` episodes from the split's first seed. The
+    episodes run in os.process_cpu_count() processes, on copies of model,
+    solver and env."""
+    validation = config.validation
+    max_steps = default_max_steps(None, config)
+
     num_episodes = validation.episodes * 2
     print(f"\nValidating on {num_episodes} episodes...")
-    for split, first_seed in validation.splits.items():
-        seeds = range(first_seed, first_seed + validation.episodes)
-        episodes = [
-            run_episode(env, act, seed, max_steps)["ep_reward"] for seed in seeds
-        ]
-        rewards[split] = float(np.mean(episodes))
-    return rewards
+    with ProcessPoolExecutor() as pool:
+        episodes = {
+            split: pool.map(
+                validation_episode,
+                repeat(model),
+                repeat(solver),
+                repeat(env),
+                range(first_seed, first_seed + validation.episodes),
+                repeat(max_steps),
+            )
+            for split, first_seed in validation.splits.items()
+        }
+        return {split: float(np.mean(list(r))) for split, r in episodes.items()}
 
 
 def validate_and_keep_best(
