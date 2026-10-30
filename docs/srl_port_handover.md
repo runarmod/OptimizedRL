@@ -1,29 +1,32 @@
-# Handover: SRL port and same-machine comparison (2026-10-29)
+# Handover: SRL port and same-machine comparison (updated 2026-10-30)
 
 Plan: [srl_port_plan.md](srl_port_plan.md). The SRL algorithm of Hoppe et al.
 (NeurIPS 2025) is ported for DAP to the standalone package `src/srl/`, which
-uses our DAP environment. Phases 1-3 of the plan are done: the port passes
-every check except one open question about the spread across seeds. Phase 4
-(the comparison with our MILP-PPO) has not started.
+uses our DAP environment. The port is verified (phases 1-3). The comparison
+tooling for phase 4 is ready. **Waiting on:** the MILP-PPO (CORL) runs on the
+server, see [Server runs](#server-runs).
 
 ## State of the branch
 
-- Branch `srl-port`, created from `main` at `1b98576`, committed and pushed
-  to `origin/srl-port`. No pull request yet.
+- Branch `srl-port`, created from `main` at `1b98576`. No pull request yet.
 - New files: `src/srl/`, `tests/`, `configs/srl_dap.yaml`,
-  `scripts/run_srl_port.sh`, `docs/srl_port_plan.md`, this file.
+  `configs/srl_dap_val10.yaml`, `scripts/run_srl_port.sh`,
+  `docs/srl_port_plan.md`, this file.
 - Changed files:
-  - `compare_srl_paper.py`: new `--srl` option.
+  - `compare_srl_paper.py`: `--srl`, a `train min` column and `--paired`.
+  - `scripts/run_srl_comparison.sh`: writes `train_time_s` per seed.
   - `pyproject.toml` and `uv.lock`: pytest as a dev dependency, and the
     pytest config.
 - `train.py`, the `Model`/`Solver` interfaces and `src/config/` are unchanged.
   `src/srl` imports only `src/gym_envs/dap_env.py` and `run_episode` from
   `src/utils/evaluation.py`.
-- The results are in `runs/`, which is gitignored, so they exist only on this
-  machine:
-  - `runs/srl_port_10seeds/`: the 10 paper seeds. One directory per seed
-    with `best.pt`, `final.pt`, `history.csv` and `train.log`, plus
-    `comparison.txt` and `comparison.csv`.
+- The results are in `runs/`, which is gitignored, so they exist only on the
+  local machine where they ran, in the session worktree
+  `.claude/worktrees/srl-porting-feasibility-c63c3a/runs/`:
+  - `runs/srl_port_10seeds/`: the 10 paper seeds with validation every
+    episode. One directory per seed with `best.pt`, `final.pt`,
+    `history.csv` and `train.log`, plus `comparison.txt` and
+    `comparison.csv`.
   - `runs/srl_single/seed_14/`: the first single-seed run, identical in
     setup to seed 14 above.
   - `runs/srl_checks/sil_seed14.log`: the SIL check.
@@ -37,27 +40,44 @@ every check except one open question about the spread across seeds. Phase 4
 | `src/srl/fenchel_young.py` | Perturbed Fenchel-Young loss (ε = 1, 20 samples) |
 | `src/srl/target.py` | Softmax target action over the perturbed candidates |
 | `src/srl/buffer.py` | Transitions, returns, replay buffer |
-| `src/srl/config.py` | `SrlConfig` (pydantic). Defaults are 03_SRL.jl and Table 7 of the paper. |
+| `src/srl/config.py` | `SrlConfig` (pydantic). Defaults are 03_SRL.jl and Table 7 of the paper. `validation.every` (default 1) sets how often to validate. |
 | `src/srl/agent.py` | `SrlAgent`: exploration episode, update step, schedules |
-| `src/srl/train.py` | Training entry point: validation before every episode, `best.pt`, `final.pt`, `history.csv` |
+| `src/srl/train.py` | Training entry point: validation, `best.pt`, `final.pt`, `history.csv` |
 | `src/srl/evaluate.py` | `evaluate_srl` (rows like `evaluate_params`), `make_env`, and a CLI |
 | `src/srl/checkpoint.py` | `torch.save` of the networks, config and metadata |
 | `src/srl/checks.py` | `sil` and `critic` checks |
-| `tests/test_srl_components.py`, `tests/test_srl_training.py` | 21 tests |
+| `tests/test_srl_components.py`, `tests/test_srl_training.py` | 22 tests |
 
 Commands:
 
 ```bash
 uv run pytest
 uv run python -m src.srl.train --config configs/srl_dap.yaml --out runs/srl/seed_14 --seed 14
-bash scripts/run_srl_port.sh            # 10 paper seeds in parallel + comparison
+bash scripts/run_srl_port.sh                                       # 10 paper seeds in parallel + comparison
+CONFIG=configs/srl_dap_val10.yaml bash scripts/run_srl_port.sh     # same, validating every 10th episode
 uv run python compare_srl_paper.py --srl runs/srl_port_10seeds/seed_*/best.pt --average
 uv run python -m src.srl.checks sil
 uv run python -m src.srl.checks critic
 ```
 
-Run time: 8.4 min for one run alone, and 13 min each with all 10 in parallel.
-Each run uses one thread. The paper reports 31 min on a MacBook M3 in Julia.
+`compare_srl_paper.py` options:
+- `params ...`: MILP params files.
+- `--srl ...`: SRL checkpoints.
+- `--average`: per-episode mean over the seeds, separately for MILP and SRL.
+- `--paired A B`: the mean per-episode revenue difference A − B with a 95 %
+  bootstrap CI over episodes and model seeds. With `--average`, the MILP and
+  SRL averages are paired by default.
+- `train min` column: from `train_time_s` next to a params file, or inside
+  an SRL checkpoint.
+
+Run time on the local machine (16 cores):
+- **SRL:** 8.4 min for one run alone, 13 min each with all 10 in parallel. Each
+  run uses one thread. The paper reports 31 min on a MacBook M3 in Julia.
+- **CORL** with `configs/dap_srl.yaml` (`scip_brute`):
+  - one training iteration (an episode plus the PPO update) takes 30-70 s,
+  - validation takes 5-8 s per episode, 80 SCIP solves each,
+  - so about 5 h per seed with `validation.every: 10`, and 22-30 h with
+    `every: 1`.
 
 ## Choices in the port that are easy to get wrong
 
@@ -95,7 +115,7 @@ Each of these follows the Julia source (`scripts/DAP/03_SRL.jl` and
 
 | Check | Result |
 |---|---|
-| Gate 1: unit tests | 21 pass. Shapes, networks checked against hand-computed outputs, top-K. The training loss: its gradient against the formula and finite differences, its lower bound, about 0 at a dominant target. The target action, the returns quirk, the buffer wrap-around, and collected episodes replaying in the environment. |
+| Gate 1: unit tests | 22 pass. Shapes, networks checked against hand-computed outputs, top-K. The training loss: its gradient against the formula and finite differences, its lower bound, about 0 at a dominant target. The target action, the returns quirk, the buffer wrap-around, collected episodes replaying in the environment, and `validation.every`. |
 | Gate 2: determinism | Two runs give identical `history.csv`, and a reloaded `best.pt` reproduces its validation score (in the tests). |
 | Critic check (seed 14) | Held-out Huber loss 13.4 → 1.1. Spearman correlation with the true expected revenue 0.16 → 0.27 pooled, 0.15 → 0.24 within a state. Positive but weak, as expected from a linear critic trained on single noisy purchases. |
 | SIL check (seed 14) | +23.2 % / +13.2 % over greedy, 74 % / 79 % of the gap from greedy to expert (train / test). The paper's SIL reaches +11.7 % / +7.3 %. |
@@ -111,6 +131,9 @@ of the per-episode revenue:
 | our port | 514.5 | +21.1 % | 67.6 % | 545.0 | +11.2 % | 67.2 % |
 | our greedy / expert | 424.9 / 557.5 | | | 490.2 / 571.8 | | |
 
+Paired against greedy, the SRL average gains +89.6 (train) and +54.8 (test)
+revenue per episode, with 95 % CIs of +64 to +117 and +31 to +80.
+
 Gate 3 criteria:
 
 - **Mean share of the expert gap within ±10 points of the paper: met**
@@ -118,15 +141,17 @@ Gate 3 criteria:
 - **At least 9 of 10 seeds beat greedy on test: met.** All 10 do; the weakest
   is seed 41 at +6.6 %.
 - **Spread across seeds of the same order as the paper's Table 1 (1.8 / 1.9):
-  open.**
-  - Our standard deviation of the 10 runs' mean revenue is 8.3 on train
-    and 8.9 on test.
-  - The mean per-episode standard deviation across runs is 36 / 27.
-  - The paper does not define its measure precisely. "Mean of the standard
-    deviations across the validation and final test rewards" matches none of
-    these.
-  - Either the paper's measure is a different quantity, or our runs vary about
-    4-5× more between seeds. Seed 41 on test accounts for part of it.
+  accepted with a caveat.**
+  - The released SRL scripts compute no standard deviation (`04_plots.jl`
+    only plots), so the paper's measure cannot be reproduced exactly.
+  - The DAP plots scale rewards by 0.1 ("val. rew. (10^1)"). If Table 1 uses
+    the same scale, our values bracket the paper's:
+    - the standard deviation of the 10 runs' mean revenue is 0.83 / 0.89,
+    - the mean per-episode standard deviation across runs is 3.6 / 2.7.
+  - Unscaled, the first measure is 8.3 / 8.9, about 4-5× the paper's value.
+  - The seeds do differ for real: seed 16 beats seed 41 by +30.1 revenue per
+    test episode (95 % CI +18.9 to +42.2). The port is accepted on the mean
+    results, with this difference noted.
 
 Other observations:
 - The mean best-so-far validation score is 354, 416, 469, 487, 494 and 498 at
@@ -134,38 +159,51 @@ Other observations:
   episode 100, as in Figure 5 of the paper.
 - 5 of the 10 seeds found their best model before episode 60.
 
-## Next steps
+## Server runs
 
-1. **Settle the open spread criterion.** Options:
-   - work out the paper's measure (Table 1 caption, Appendix C.1.4),
-   - accept the port as validated on the mean results and note the
-     difference,
-   - run the Julia code for a few seeds to compare spreads (Julia 1.11.5 is
-     installed through juliaup; the plan's fallback section has the risks).
+The comparison needs MILP-PPO (CORL) runs, which are too slow for the local machine.
+SRL is rerun on the same server so that the training times are comparable.
 
-   Cheap diagnostic: compare the `history.csv` curves of seed 41 with the
-   others.
-2. **Phase 4, the MILP-PPO side.** Run `scripts/run_srl_comparison.sh` (it
-   trains our MILP model with PPO). Set `validation.every: 1` in
-   `configs/dap_srl.yaml` first, so both algorithms use the same protocol
-   (it is 10 now). It uses `scip_brute` and is much slower than SRL; check
-   the time per run before starting all 10 seeds.
-3. **Compare both in one table:**
+1. **Choose the validation protocol.** It only decides which checkpoint is
+   kept as best, and must be the same for both algorithms.
+   - **Every 10th episode (recommended):** about 5 h per CORL seed. Use
+     `configs/dap_srl.yaml` as it is (`validation.every: 10`) and
+     `configs/srl_dap_val10.yaml` for SRL.
+   - **Every episode,** the paper's protocol: about 22-30 h per CORL seed.
+     Set `validation.every: 1` in `configs/dap_srl.yaml`, and use
+     `configs/srl_dap.yaml` for SRL.
+2. **On the server**, with `srl-port` pulled, run the CORL seeds (10 in
+   parallel needs at least 10 cores; set `JOBS` otherwise):
 
    ```bash
-   uv run python compare_srl_paper.py runs/srl_dap_<timestamp>/seed_*/*_best.yaml \
-       --srl runs/srl_port_10seeds/seed_*/best.pt --average
+   WANDB_MODE=offline RUN_DIR=runs/corl_dap_val10 nohup bash scripts/run_srl_comparison.sh > corl.log 2>&1 &
    ```
 
-4. **Extend `compare_srl_paper.py`** with a training-time column
-   (`train_time_s` is in every SRL `best.pt`; MILP-PPO needs its own
-   timing), and a paired comparison (per-episode revenue difference with a
-   bootstrap confidence interval).
-5. **Optional:** SRL's training on our `DapModel` restricted to the
+3. **When that has finished,** run SRL. Not at the same time, so the two do
+   not compete for the CPU:
+
+   ```bash
+   CONFIG=configs/srl_dap_val10.yaml RUN_DIR=runs/srl_port_val10 nohup bash scripts/run_srl_port.sh > srl.log 2>&1 &
+   ```
+
+4. **Copy back** `runs/corl_dap_val10/` and `runs/srl_port_val10/`. Each CORL
+   seed directory needs its `*_best.yaml` and `train_time_s`, and each SRL
+   seed directory its `best.pt`.
+
+## Next steps
+
+1. **The final comparison**, when the server runs are back:
+
+   ```bash
+   uv run python compare_srl_paper.py runs/corl_dap_val10/seed_*/*_best.yaml \
+       --srl runs/srl_port_val10/seed_*/best.pt --average \
+       --csv runs/final_comparison.csv
+   ```
+
+   This prints both algorithms next to the paper, with training time and the
+   paired difference between the CORL and SRL averages. Write up the results
+   here.
+2. **Optional:** SRL's training on our `DapModel` restricted to the
    immediate-score term (`w = 0`, no value pieces), which is the same policy
    class as SRL's actor. Also the plan's ablations (`dynamic: false`, no
-   clipping) if a gate needs debugging.
-
-Small cleanups: `src/srl/checks.py` calls the agent's private `_step` and
-resets `_linear_actor`. Make these public on `SrlAgent` (e.g.
-`optimizer_step` and `actor_updated`).
+   clipping), if a result needs explaining.
