@@ -177,6 +177,24 @@ class DapEnvConfig(StrictConfig):
     )
 
 
+class DapModelConfig(StrictConfig):
+    pairwise: bool = Field(
+        True,
+        description=(
+            "Include the pair terms q_ij x_i x_j, linearized with McCormick "
+            "constraints. False leaves them out, which makes the LP relaxation "
+            "much smaller and more often integral."
+        ),
+    )
+    value_term: bool = Field(
+        True,
+        description=(
+            "Include the value term v >= d_l + g_l^T x with model.n_value_func "
+            "pieces. False leaves v out of the MILP."
+        ),
+    )
+
+
 class ValidationConfig(StrictConfig):
     every: int = Field(
         0,
@@ -279,6 +297,7 @@ class AppConfig(StrictConfig):
     portfolio_model: PortfolioModelConfig
     portfolio_env: PortfolioEnvConfig
     dap_env: DapEnvConfig
+    dap_model: DapModelConfig = Field(default_factory=DapModelConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
     ppo: PpoConfig
     vanilla_gradient: VanillaGradientConfig

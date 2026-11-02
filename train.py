@@ -295,6 +295,10 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
             # No seed: automatically uses rolling seed per episode
             init_env_seed = None
             n_features = dap_model.N_FEATURES
+            # Drawn after the other parameters, so (a, w) start the same with
+            # and without the value term.
+            if not config.dap_model.value_term:
+                num_pieces = 0
             theta = np.random.uniform(
                 0, 0.1, size=2 * n_features + num_pieces * (2 * n_features + 1)
             )
@@ -303,6 +307,7 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
                 n_items=dap_cfg.n_items,
                 assortment_size=dap_cfg.assortment_size,
                 n_value_pieces=num_pieces,
+                pairwise=config.dap_model.pairwise,
             )
         case _:
             raise ValueError(
