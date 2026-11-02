@@ -14,8 +14,10 @@ Episodes start at the seed after the DAP training seeds unless --seed is given.
 
 import argparse
 import csv
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from concurrent.futures import Executor, ProcessPoolExecutor
 from functools import partial
+from itertools import chain, repeat
 from pathlib import Path
 
 import numpy as np
@@ -24,14 +26,8 @@ import yaml
 from src.config.config_loader import load_config
 from src.config.config_models import AppConfig
 from src.gym_envs import dap_env
-from src.gym_envs.env_interface import Env
-from src.utils.evaluation import best_action, default_max_steps, run_episode
-from train import (
-    build_dap_env,
-    build_model_and_env,
-    build_solver,
-    sanitize_env_action,
-)
+from src.utils.evaluation import default_max_steps, run_episode
+from train import best_action_episode, build_dap_env, build_model_and_env, build_solver
 
 
 def config_for_params(params_path: Path, fallback: AppConfig) -> AppConfig:
@@ -46,45 +42,63 @@ def config_for_params(params_path: Path, fallback: AppConfig) -> AppConfig:
     return config.model_copy(update={"load": True, "load_path": params_path})
 
 
+def policy_episode(
+    policy: Callable[[dap_env.DynamicAssortmentSimulator], np.ndarray],
+    env: dap_env.DynamicAssortmentEnvironment,
+    seed: int,
+    max_steps: int,
+) -> dict[str, float]:
+    """Episode metrics of a DAP baseline policy."""
+    return run_episode(env, partial(policy, env.sim), seed, max_steps)
+
+
 def evaluate(
+    pool: Executor,
     label: str,
-    env: Env,
-    act: Callable[[], np.ndarray],
+    episode: Callable[..., dict[str, float]],
+    args: tuple,
     seeds: list[int],
     max_steps: int,
-) -> list[dict[str, float]]:
+) -> Iterator[dict[str, float]]:
+    """Submits episode(*args, seed, max_steps) of every seed to pool, on copies
+    of args. The rows come in seed order as the episodes finish."""
     print(f"Evaluating {label} on {len(seeds)} episodes...")
-    results = []
-    for seed in seeds:
-        episode = run_episode(env, act, seed, max_steps)
-        results.append({"run": label, "seed": seed, **episode})
-    return results
+    episodes = pool.map(
+        episode, *(repeat(arg) for arg in args), seeds, repeat(max_steps)
+    )
+    return (
+        {"run": label, "seed": seed, **result} for seed, result in zip(seeds, episodes)
+    )
 
 
 def evaluate_params(
-    label: str, config: AppConfig, project_root: Path, seeds: list[int], max_steps: int
-) -> list[dict[str, float]]:
+    pool: Executor,
+    label: str,
+    config: AppConfig,
+    project_root: Path,
+    seeds: list[int],
+    max_steps: int,
+) -> Iterator[dict[str, float]]:
     model, env = build_model_and_env(config, project_root)
     solver = build_solver(config)
-
-    def act() -> np.ndarray:
-        model.update_from_environment(env)
-        return sanitize_env_action(env, best_action(model, solver))
-
-    return evaluate(label, env, act, seeds, max_steps)
+    return evaluate(
+        pool, label, best_action_episode, (model, solver, env), seeds, max_steps
+    )
 
 
 def evaluate_dap_baselines(
-    config: AppConfig, seeds: list[int], max_steps: int
-) -> list[dict[str, float]]:
+    pool: Executor, config: AppConfig, seeds: list[int], max_steps: int
+) -> Iterator[dict[str, float]]:
     env = build_dap_env(config)
-    results = []
-    for label, policy in (
-        ("greedy", dap_env.greedy_assortment),
-        ("expert", dap_env.expert_assortment),
-    ):
-        results.extend(evaluate(label, env, partial(policy, env.sim), seeds, max_steps))
-    return results
+    return chain.from_iterable(
+        [
+            evaluate(pool, label, policy_episode, (policy, env), seeds, max_steps)
+            for label, policy in (
+                ("greedy", dap_env.greedy_assortment),
+                ("expert", dap_env.expert_assortment),
+            )
+        ]
+    )
 
 
 def print_summary(results: list[dict[str, float]]) -> None:
@@ -153,13 +167,20 @@ def main():
         uses_dap = args.dap_baselines or any(c.problem == "dap" for _, c in runs)
         first_seed = base_config.dap_env.train_seeds[1] + 1 if uses_dap else 0
     seeds = list(range(first_seed, first_seed + args.episodes))
-    results = []
-    if args.dap_baselines:
-        max_steps = default_max_steps(args.max_steps, base_config, problem="dap")
-        results.extend(evaluate_dap_baselines(base_config, seeds, max_steps))
-    for label, config in runs:
-        max_steps = default_max_steps(args.max_steps, config)
-        results.extend(evaluate_params(label, config, project_root, seeds, max_steps))
+    # Episodes run in os.process_cpu_count() processes, all submitted up front.
+    with ProcessPoolExecutor() as pool:
+        evaluations = []
+        if args.dap_baselines:
+            max_steps = default_max_steps(args.max_steps, base_config, problem="dap")
+            evaluations.append(
+                evaluate_dap_baselines(pool, base_config, seeds, max_steps)
+            )
+        for label, config in runs:
+            max_steps = default_max_steps(args.max_steps, config)
+            evaluations.append(
+                evaluate_params(pool, label, config, project_root, seeds, max_steps)
+            )
+        results = list(chain.from_iterable(evaluations))
 
     print()
     print_summary(results)

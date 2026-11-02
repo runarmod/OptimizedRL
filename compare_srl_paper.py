@@ -26,6 +26,7 @@ import argparse
 import csv
 import os
 from concurrent.futures import ProcessPoolExecutor
+from itertools import chain
 from pathlib import Path
 
 import numpy as np
@@ -159,7 +160,7 @@ def main():
         "--jobs",
         type=int,
         default=os.cpu_count(),
-        help="Params files and splits evaluated in parallel.",
+        help="Episodes evaluated in parallel.",
     )
     parser.add_argument("--csv", type=Path, help="Write per-episode results here.")
     args = parser.parse_args()
@@ -179,36 +180,40 @@ def main():
         split: list(range(first_seed, first_seed + args.episodes))
         for split, first_seed in SPLIT_FIRST_SEED.items()
     }
-    pool = ProcessPoolExecutor(max_workers=max(1, min(args.jobs, len(runs) * 2)))
-    evaluations = {
-        (split, label): pool.submit(
-            evaluate_params,
-            label,
-            config,
-            project_root,
-            split_seeds[split],
-            config.dap_env.max_steps,
-        )
-        for split in args.splits
-        for label, config in runs
-    }
+    # Submit the episodes of every split and run up front, then report the
+    # splits in order as their episodes finish.
+    with ProcessPoolExecutor(max_workers=args.jobs) as pool:
+        evaluations = {
+            split: [
+                evaluate_dap_baselines(
+                    pool, base_config, split_seeds[split], base_config.dap_env.max_steps
+                ),
+                *(
+                    evaluate_params(
+                        pool,
+                        label,
+                        config,
+                        project_root,
+                        split_seeds[split],
+                        config.dap_env.max_steps,
+                    )
+                    for label, config in runs
+                ),
+            ]
+            for split in args.splits
+        }
 
-    all_rows = []
-    for split in args.splits:
-        print(f"\n== {split} ==")
-        rows = evaluate_dap_baselines(
-            base_config, split_seeds[split], base_config.dap_env.max_steps
-        )
-        for label, _ in runs:
-            rows.extend(evaluations[split, label].result())
-        revenue = revenue_by_run(rows, args.metric)
-        if args.average:
-            revenue[AVERAGE_LABEL] = np.mean(
-                [revenue[label] for label, _ in runs], axis=0
-            )
-        print_split(split, summarize_split(split, revenue), args.episodes)
-        all_rows.extend({"split": split, **row} for row in rows)
-    pool.shutdown()
+        all_rows = []
+        for split in args.splits:
+            print(f"\n== {split} ==")
+            rows = list(chain.from_iterable(evaluations[split]))
+            revenue = revenue_by_run(rows, args.metric)
+            if args.average:
+                revenue[AVERAGE_LABEL] = np.mean(
+                    [revenue[label] for label, _ in runs], axis=0
+                )
+            print_split(split, summarize_split(split, revenue), args.episodes)
+            all_rows.extend({"split": split, **row} for row in rows)
 
     if args.metric != "ep_reward":
         print(f"\n'ours' rows use {args.metric}; the paper reports realized revenue.")

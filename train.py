@@ -332,16 +332,16 @@ def sanitize_env_action(env, action):
     return action_arr
 
 
-def validation_episode(
+def best_action_episode(
     model: Model, solver: Solver, env: Env, seed: int, max_steps: int
-) -> float:
-    """Episode reward of the most probable actions."""
+) -> dict[str, float]:
+    """Episode metrics of the most probable actions."""
 
     def act() -> np.ndarray:
         model.update_from_environment(env)
         return sanitize_env_action(env, best_action(model, solver))
 
-    return run_episode(env, act, seed, max_steps)["ep_reward"]
+    return run_episode(env, act, seed, max_steps)
 
 
 def validate(
@@ -359,7 +359,7 @@ def validate(
     with ProcessPoolExecutor() as pool:
         episodes = {
             split: pool.map(
-                validation_episode,
+                best_action_episode,
                 repeat(model),
                 repeat(solver),
                 repeat(env),
@@ -368,7 +368,10 @@ def validate(
             )
             for split, first_seed in validation.splits.items()
         }
-        return {split: float(np.mean(list(r))) for split, r in episodes.items()}
+        return {
+            split: float(np.mean([e["ep_reward"] for e in r]))
+            for split, r in episodes.items()
+        }
 
 
 def validate_and_keep_best(
