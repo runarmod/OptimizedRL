@@ -17,6 +17,7 @@
 #   WANDB_MODE  overrides wandb_mode of the config, e.g. offline
 #   RUN_DIR     output directory (default: runs/srl_dap_<timestamp>)
 #   EPISODES    comparison episodes per split (default: 100, as the paper)
+#   NAME        run name before " seed <seed>" (default: dap srl-comparison)
 set -euo pipefail
 shopt -s nullglob
 cd "$(dirname "$0")/.."
@@ -50,7 +51,7 @@ train_seed() {
     local seed_dir="$run_dir/seed_$seed"
     mkdir -p "$seed_dir"
     sed -e "s/^numpy_seed: .*/numpy_seed: $seed/" \
-        -e "s/^name: .*/name: \"dap srl-comparison seed $seed\"/" \
+        -e "s/^name: .*/name: \"${NAME:-dap srl-comparison} seed $seed\"/" \
         "$config" > "$seed_dir/config.yaml"
     if [[ -n ${WANDB_MODE:-} ]]; then
         sed -i "s/^wandb_mode: .*/wandb_mode: \"$WANDB_MODE\"/" "$seed_dir/config.yaml"
