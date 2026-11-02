@@ -45,6 +45,14 @@ class DapModel(Model):
              x binary, 0 <= y <= 1, v free.
 
     Variables are ordered [x (n_items), y (one per pair i<j), v].
+
+    With pairwise=False the pair terms are left out: no y variables and no
+    McCormick constraints, so the variables are [x, v] and w is unused (its
+    gradient is zero).
+
+    With n_value_pieces=0 the value term is left out: no v variable and no
+    value-piece constraints, so theta = (a, w) and the objective is
+    -sum_i rho_i x_i + sum_{i<j} q_ij y_ij.
     """
 
     POLICY_PARAM_ORDER = ("theta",)
@@ -55,11 +63,14 @@ class DapModel(Model):
         n_items: int,
         assortment_size: int,
         n_value_pieces: int,
+        pairwise: bool = True,
     ):
         super().__init__()
         self.n_items = n_items
         self.assortment_size = assortment_size
         self.n_value_pieces = n_value_pieces
+        self.value_term = n_value_pieces > 0
+        self.pairwise = pairwise
         self.n_desc_vars = n_items
 
         expected_size = 2 * N_FEATURES + n_value_pieces * (2 * N_FEATURES + 1)
@@ -70,6 +81,8 @@ class DapModel(Model):
         self.theta = theta.astype(float)
 
         self.pair_i, self.pair_j = np.triu_indices(n_items, k=1)
+        if not pairwise:
+            self.pair_i, self.pair_j = self.pair_i[:0], self.pair_j[:0]
         self.n_pairs = len(self.pair_i)
 
         self.phi = None
@@ -118,11 +131,17 @@ class DapModel(Model):
         d = b + c @ self.phi_bar
         return rho, q, g, d
 
-    def _assortment_solution(self, x: np.ndarray) -> tuple[np.ndarray, int]:
+    def _objective(self, rho: np.ndarray, q: np.ndarray) -> np.ndarray:
+        """Objective coefficients of the variables [x, y, v] (or [x, y])."""
+        return np.hstack((-rho, q, [1.0] if self.value_term else []))
+
+    def _assortment_solution(self, x: np.ndarray) -> tuple[np.ndarray, int | None]:
         """Optimal (x, y, v) of the MILP with the binary assortment x fixed, and the
-        index of the active value piece."""
+        index of the active value piece (None without a value term)."""
         _, _, g, d = self.coefficients()
         y = x[self.pair_i] * x[self.pair_j]
+        if not self.value_term:
+            return np.hstack((x, y)), None
         pieces = d + g @ x
         active = int(np.argmax(pieces))
         return np.hstack((x, y, pieces[active])), active
@@ -131,7 +150,7 @@ class DapModel(Model):
         """Objective value Q_theta(s_t, x) of a binary assortment x."""
         rho, q, _, _ = self.coefficients()
         solution, _ = self._assortment_solution(np.asarray(x, dtype=float))
-        return float(np.hstack((-rho, q, 1.0)) @ solution)
+        return float(self._objective(rho, q) @ solution)
 
     def _branching_bounds(self, sol: dict) -> tuple[np.ndarray, np.ndarray]:
         """Bounds of the assortment variables at a candidate's node."""
@@ -206,7 +225,8 @@ class DapModel(Model):
         # on a bound, so their bound multipliers take up the reduced costs; v has
         # a zero reduced cost since the value-piece duals sum to 1.
         ineqlin = np.zeros(node["A_ub"].shape[0])
-        ineqlin[active] = -1.0
+        if active is not None:
+            ineqlin[active] = -1.0
         eqlin = np.zeros(node["A_eq"].shape[0])
         reduced_costs = node["c"] - ineqlin @ node["A_ub"]
         n_binary = self.n_items + self.n_pairs
@@ -236,17 +256,18 @@ class DapModel(Model):
     def get_LP_formulation(self):
         rho, q, g, d = self.coefficients()
         n, n_pairs, n_pieces = self.n_items, self.n_pairs, self.n_value_pieces
-        n_vars = n + n_pairs + 1
+        n_vars = n + n_pairs + int(self.value_term)
         y_cols = n + np.arange(n_pairs)
         v_col = n + n_pairs
 
-        c = np.hstack((-rho, q, 1.0))
+        c = self._objective(rho, q)
 
         # Value pieces first, so the first n_value_pieces inequality duals belong
         # to them: sum_i g_li x_i - v <= -d_l.
         A_value = np.zeros((n_pieces, n_vars))
         A_value[:, :n] = g
-        A_value[:, v_col] = -1.0
+        if self.value_term:
+            A_value[:, v_col] = -1.0
         b_value = -d
 
         # McCormick constraints forcing y_ij = x_i x_j for binary x.
@@ -269,8 +290,8 @@ class DapModel(Model):
         A_eq[0, :n] = 1.0
         b_eq = np.array([float(self.assortment_size)])
 
-        bounds = [(0, 1)] * (n + n_pairs) + [(None, None)]
-        integer = [1] * n + [0] * (n_pairs + 1)
+        bounds = [(0, 1)] * (n + n_pairs) + [(None, None)] * int(self.value_term)
+        integer = [1] * n + [0] * (n_vars - n)
 
         return {
             "c": c,
@@ -306,11 +327,13 @@ class DapModel(Model):
 
         if ineq_duals is not None and len(ineq_duals) >= self.n_value_pieces:
             lam = -np.asarray(ineq_duals[: self.n_value_pieces], dtype=float)
-        else:
+        elif self.value_term:
             d = b + c @ phi_bar
             g = psi @ phi.T
             lam = np.zeros(self.n_value_pieces)
             lam[np.argmax(d + g @ x)] = 1.0
+        else:
+            lam = np.zeros(0)
 
         shown = phi.T @ x
         dQda = -shown
