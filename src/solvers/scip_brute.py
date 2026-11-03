@@ -388,6 +388,7 @@ class SCIPSolver(Solver):
         tighten_integer_projected_bounds=False,
         mimic_bnb_pool_filter=False,
         prefer_depth_first=True,
+        min_pool_size=None,
     ):
         self.verbose = verbose
         self.disable_heuristics = disable_heuristics
@@ -401,6 +402,7 @@ class SCIPSolver(Solver):
         self.tighten_integer_projected_bounds = tighten_integer_projected_bounds
         self.mimic_bnb_pool_filter = mimic_bnb_pool_filter
         self.prefer_depth_first = prefer_depth_first
+        self.min_pool_size = min_pool_size
         self.last_tree_snapshot = None
 
     @staticmethod
@@ -800,6 +802,52 @@ class SCIPSolver(Solver):
             "status": "lp_branch_relaxation",
         }
 
+    def _branch_candidates(self, init_node):
+        """Yield LP candidates one branching away from the root LP: fractional
+        variables split (most fractional first), then integral ones moved one
+        step (lowest reduced cost first)."""
+        root = self._solve_lp_with_conds(init_node, [])
+        if root is None:
+            return
+
+        x = root["x"]
+        reduced_costs = np.abs(root["lower"]) + np.abs(root["upper"])
+        ranked = []  # [is_integer, -fractionality_or_reduced_cost, idx, down, up]
+        for idx, is_integer in enumerate(init_node["integer"]):
+            if not is_integer:
+                continue
+            frac = abs(x[idx] - round(x[idx]))
+            if frac > 1e-6:
+                # fractional variable
+                down, up = np.floor(x[idx]), np.ceil(x[idx])
+                ranked.append((0, -frac, idx, down, up))
+            else:
+                # integer variable
+                value = round(x[idx])
+                ranked.append((1, reduced_costs[idx], idx, value - 1, value + 1))
+        ranked.sort()
+
+        cond_sets = [[]]
+        for _, _, idx, down, up in ranked:
+            cond_sets.append([(idx, "<=", float(down))])
+            cond_sets.append([(idx, ">=", float(up))])
+
+        for conds in cond_sets:
+            lp_solution = self._solve_lp_with_conds(init_node, conds)
+            if lp_solution is None or not self._is_valid_native_candidate(
+                lp_solution["x"], lp_solution["fun"]
+            ):
+                continue
+            entry = dict(lp_solution)
+            entry["fathomed"] = True
+            entry["depth"] = len(conds)
+            entry["status"] = "min_pool_branch"
+            if self.tighten_integer_projected_bounds:
+                entry["bounds"] = self._project_integer_bounds(
+                    entry["x"], entry["bounds"], init_node["integer"]
+                )
+            yield entry
+
     def _build_model(self, model, init_node):
         """Configure `model` and add the variables, objective and constraints of
         init_node. Returns the variables."""
@@ -987,6 +1035,15 @@ class SCIPSolver(Solver):
                 )
                 for key, value in filter_stats.items():
                     pool_debug[f"bnb_filter_{key}"] = value
+
+            # BnB-tree yielded too few candidates, so add more by branching from the root LP
+            if self.min_pool_size is not None and len(results) < self.min_pool_size:
+                added = 0
+                for entry in self._branch_candidates(init_node):
+                    if len(results) >= self.min_pool_size:
+                        break
+                    added += _append_unique(entry)
+                pool_debug["min_pool_added"] = added
 
             pool_debug["post_filter_results"] = len(results)
 
