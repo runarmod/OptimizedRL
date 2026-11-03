@@ -104,6 +104,7 @@ def build_solver(config: AppConfig):
                 tighten_integer_projected_bounds=config.scip_brute.tighten_integer_projected_bounds,
                 mimic_bnb_pool_filter=config.scip_brute.mimic_bnb_pool_filter,
                 prefer_depth_first=config.scip_brute.prefer_depth_first,
+                min_pool_size=config.scip_brute.min_pool_size,
             )
 
     raise ValueError(
