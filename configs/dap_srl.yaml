@@ -51,7 +51,7 @@ training:
   # options: vanilla_gradient | ppo
   algorithm: "ppo"
   # options: scip | scip_brute | bnb | kbest
-  solver: "scip_brute"
+  solver: "kbest"
 
 # Keeps the model with the best mean revenue on the training seeds 1-30 and the
 # validation seeds 1001-1030, as SRL does.
@@ -127,6 +127,9 @@ dap_env:
   initial_inventory: 200
   max_steps: 80
   train_seeds: [1, 100]
+
+dap_model:
+  pairwise: false
 
 ppo:
   # Keep PPO aligned with your objective: minimize env reward.
