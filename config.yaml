@@ -33,8 +33,8 @@ scip_brute:
 training:
   # options: vanilla_gradient | ppo
   algorithm: "ppo"
-  # options: scip | scip_brute | bnb
-  solver: "scip_brute"
+  # options: scip | scip_brute | bnb | kbest
+  solver: "kbest"
 
 validation:
   every: 10
@@ -104,6 +104,9 @@ dap_env:
   initial_inventory: 200
   max_steps: 80
   train_seeds: [1, 100]
+
+dap_model:
+  pairwise: false
 
 ppo:
   # Keep PPO aligned with your objective: minimize env reward.
