@@ -42,10 +42,15 @@ scip_brute:
   # Add one-branching LP candidates until there are this many; null adds none.
   min_pool_size: 8
 
+# Candidate pool of the K best integer solutions (training.solver "kbest").
+kbest:
+  k: 8
+  verbose: false
+
 training:
   # options: vanilla_gradient | ppo
   algorithm: "ppo"
-  # options: scip | scip_brute | bnb
+  # options: scip | scip_brute | bnb | kbest
   solver: "scip_brute"
 
 # Keeps the model with the best mean revenue on the training seeds 1-30 and the

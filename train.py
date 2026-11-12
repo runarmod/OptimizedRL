@@ -14,7 +14,7 @@ from src.gym_envs import dap_env, example_env, portfolio_env
 from src.gym_envs.env_interface import Env
 from src.models import dap_model, example_model, portfolio_model
 from src.models.model_interface import Model
-from src.solvers import bnb, scip, scip_brute
+from src.solvers import bnb, kbest, scip, scip_brute
 from src.solvers.solver_interface import Solver
 from src.training_algorithm.ppo.ppo import PPO_MILP_Agent
 from src.training_algorithm.training_algorithm_interface import (
@@ -107,8 +107,11 @@ def build_solver(config: AppConfig):
                 min_pool_size=config.scip_brute.min_pool_size,
             )
 
+        case "kbest":
+            return kbest.KBestSolver(k=config.kbest.k, verbose=config.kbest.verbose)
+
     raise ValueError(
-        "training.solver must be one of 'scip', 'scip_brute', or 'bnb'. "
+        "training.solver must be one of 'scip', 'scip_brute', 'bnb' or 'kbest'. "
         f"Got '{config.training.solver}'."
     )
 

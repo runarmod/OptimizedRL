@@ -46,11 +46,20 @@ class ScipBruteConfig(StrictConfig):
     )
 
 
+class KBestConfig(StrictConfig):
+    k: int = Field(
+        8,
+        gt=0,
+        description="Number of best integer solutions in the candidate pool.",
+    )
+    verbose: bool = Field(False, description="Show SCIP solver output.")
+
+
 class TrainingConfig(StrictConfig):
     algorithm: Literal["vanilla_gradient", "ppo"] = Field(
         description="Training algorithm."
     )
-    solver: Literal["scip", "scip_brute", "bnb"] = Field(
+    solver: Literal["scip", "scip_brute", "bnb", "kbest"] = Field(
         description="MILP solver implementation."
     )
 
@@ -295,6 +304,7 @@ class AppConfig(StrictConfig):
     device: str = Field(description="Requested Torch device, such as cpu or cuda.")
     scip: ScipConfig
     scip_brute: ScipBruteConfig
+    kbest: KBestConfig = Field(default_factory=KBestConfig)
     training: TrainingConfig
     model: ModelConfig
     gym: GymConfig
