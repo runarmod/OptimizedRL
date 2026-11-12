@@ -52,6 +52,12 @@ class KBestConfig(StrictConfig):
         gt=0,
         description="Number of best integer solutions in the candidate pool.",
     )
+    min_distance: int = Field(
+        1,
+        gt=0,
+        description="Least number of integer variables in which every solution "
+        "differs from each earlier one. 1 gives the K best solutions.",
+    )
     verbose: bool = Field(False, description="Show SCIP solver output.")
 
 

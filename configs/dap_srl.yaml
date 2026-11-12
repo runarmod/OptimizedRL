@@ -45,6 +45,9 @@ scip_brute:
 # Candidate pool of the K best integer solutions (training.solver "kbest").
 kbest:
   k: 8
+  # Each candidate differs from every earlier one in at least this many items
+  # x_i; 1 gives the K best. In DAP 2 per swapped item: 6 = at most 1 shared item.
+  min_distance: 1
   verbose: false
 
 training:

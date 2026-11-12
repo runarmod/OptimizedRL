@@ -23,12 +23,21 @@ class KBestSolver(Solver):
     solution, so it carries that LP's duals, as the other solvers' candidates do.
     No-good cuts need binary integer variables, so a MILP with general integer
     variables is refused.
+
+    With min_distance d > 1 the pool is "best, then diverse": each solution
+    differs from every earlier one in at least d integer variables (Hamming
+    distance). In DAP swapping one item changes two variables, so d = 6 means
+    every pair of candidates shares at most 1 of the 4 items. The pool is then
+    no longer the K best solutions.
     """
 
-    def __init__(self, k: int = 8, verbose: bool = False):
+    def __init__(self, k: int = 8, min_distance: int = 1, verbose: bool = False):
         if k < 1:
             raise ValueError(f"k must be at least 1, got {k}")
+        if min_distance < 1:
+            raise ValueError(f"min_distance must be at least 1, got {min_distance}")
         self.k = k
+        self.min_distance = min_distance
         self.verbose = verbose
 
     @staticmethod
@@ -120,7 +129,8 @@ class KBestSolver(Solver):
         }
 
     def _solve_k(self, node, k: int) -> list[dict]:
-        """Up to k best integer solutions of `node`, best first."""
+        """Up to k best integer solutions of `node` at least min_distance apart,
+        best first."""
         int_idx = self._integer_indices(node)
         model, vars_ = self._build_model(node)
         try:
@@ -140,14 +150,14 @@ class KBestSolver(Solver):
                 if rank == k - 1:
                     break
                 # No-good cut: every later solution differs from x_int in at
-                # least one integer variable.
+                # least min_distance integer variables.
                 model.freeTransform()
                 model.addCons(
                     quicksum(
                         1 - vars_[i] if value > 0.5 else vars_[i]
                         for i, value in zip(int_idx, x_int)
                     )
-                    >= 1
+                    >= self.min_distance
                 )
 
             if self.verbose:

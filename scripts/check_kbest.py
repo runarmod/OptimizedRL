@@ -38,6 +38,45 @@ def enumerated_values(model: DapModel) -> np.ndarray:
     return np.sort(values)
 
 
+def greedy_diverse_values(model: DapModel, min_distance: int) -> np.ndarray:
+    """Values of the pool "best, then at least min_distance from all kept"
+    built greedily over every assortment."""
+    scored = []
+    for items in combinations(range(N_ITEMS), ASSORTMENT_SIZE):
+        x = np.zeros(N_ITEMS)
+        x[list(items)] = 1.0
+        scored.append((model.assortment_value(x), x))
+    scored.sort(key=lambda pair: pair[0])
+    kept = []
+    for value, x in scored:
+        if all(np.abs(x - y).sum() >= min_distance for _, y in kept):
+            kept.append((value, x))
+            if len(kept) == K:
+                break
+    return np.array([value for value, _ in kept])
+
+
+def check_diverse(min_distance: int, rng: np.random.Generator) -> None:
+    solver = KBestSolver(k=K, min_distance=min_distance)
+    for _ in range(N_TRIALS):
+        theta = rng.normal(size=2 * N_FEATURES + N_PIECES * (2 * N_FEATURES + 1))
+        model = DapModel(theta, N_ITEMS, ASSORTMENT_SIZE, N_PIECES, pairwise=False)
+        state = rng.uniform(0, 1, size=N_ITEMS * N_ITEM_FEATURES)
+        model._update_state(state)
+        model.phi, model.phi_bar, model.phi_pairs = model._features(state)
+
+        pool = solver.solve(model.get_LP_formulation())
+        xs = [sol["x"][:N_ITEMS].round() for sol in pool]
+        for i in range(len(xs)):
+            for j in range(i):
+                assert np.abs(xs[i] - xs[j]).sum() >= min_distance
+
+        solver_vals = np.array([sol["fun"] for sol in pool])
+        expected = greedy_diverse_values(model, min_distance)
+        assert np.allclose(solver_vals, expected, atol=TOL), (solver_vals, expected)
+    print(f"min_distance={min_distance}: ok")
+
+
 def check(pairwise: bool, n_pieces: int, rng: np.random.Generator) -> None:
     solver = KBestSolver(k=K)
     times = []
@@ -85,6 +124,8 @@ def main() -> None:
     for pairwise in (True, False):
         for n_pieces in (N_PIECES, 0):
             check(pairwise, n_pieces, rng)
+    for min_distance in (4, 6):
+        check_diverse(min_distance, rng)
 
 
 if __name__ == "__main__":

@@ -108,7 +108,11 @@ def build_solver(config: AppConfig):
             )
 
         case "kbest":
-            return kbest.KBestSolver(k=config.kbest.k, verbose=config.kbest.verbose)
+            return kbest.KBestSolver(
+                k=config.kbest.k,
+                min_distance=config.kbest.min_distance,
+                verbose=config.kbest.verbose,
+            )
 
     raise ValueError(
         "training.solver must be one of 'scip', 'scip_brute', 'bnb' or 'kbest'. "
