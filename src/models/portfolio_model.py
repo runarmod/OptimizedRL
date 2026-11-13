@@ -164,7 +164,7 @@ class PortfolioModel(Model):
         n_pieces = self.aA.shape[0] if self.value_term else 0
         neg_ones = -1 * np.ones((n_pieces, 1))
         A_ub_upper = np.zeros((n_pieces, var_dim))
-        A_ub_upper[:, x_start : x_start + n_actions] = self.aB
+        A_ub_upper[:, x_start : x_start + n_actions] = self.aB[:n_pieces]
         A_ub_upper[:, y_idx : y_idx + 1] = neg_ones
         b_ub_upper = (-self.b - self.aA @ self.s_t)[:n_pieces]
 
