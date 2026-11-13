@@ -6,8 +6,13 @@ from src.models.model_interface import Model
 
 
 class Arbbin(Model):  # Fix D
-    def __init__(self, c, C, D, E, aA, aB, b, bounds, integer, pf, exact=False):
+    def __init__(
+        self, c, C, D, E, aA, aB, b, bounds, integer, pf, exact=False, value_term=True
+    ):
+        """value_term=False leaves v and its pieces v >= aA s + aB x + b out of the
+        MILP, so only c is trained (aA, aB and b get zero gradient)."""
         super().__init__()
+        self.value_term = value_term
         self.c = c.astype(float)
         self.C = C.astype(float)
         self.D = D.astype(float)
@@ -29,6 +34,8 @@ class Arbbin(Model):  # Fix D
         self._update_state(environment.state)
 
     def get_LP_formulation(self):
+        if not self.value_term:
+            return self._LP_formulation_without_value_term()
         c = np.hstack((self.c, 1, self.pf))
         neg_ones = -1 * np.ones((self.aA.shape[0], 1))
         A_ub_upper = np.hstack((self.aB, neg_ones, np.zeros_like(neg_ones)))
@@ -60,7 +67,24 @@ class Arbbin(Model):  # Fix D
         }
         return node
 
+    def _LP_formulation_without_value_term(self):
+        """min c^T x + pf z  s.t.  D x - z <= E - C s, with variables [x, z]."""
+        A_ub = np.hstack((self.D, -np.ones((self.D.shape[0], 1))))
+        b_ub = self.E - self.C @ self.s_t
+        return {
+            "c": np.hstack((self.c, self.pf)),
+            "A_ub": A_ub,
+            "b_ub": b_ub,
+            "A_eq": None,
+            "b_eq": None,
+            "bounds": copy(self.bounds) + [(0, None)],
+            "integer": copy(self.integer) + [0],
+        }
+
     def lagrange_gradient(self, x_t, state, eq_duals, ineq_duals):
+        if not self.value_term:
+            zeros = np.zeros(self.aA.size + self.aB.size + self.b.size)
+            return np.hstack((np.asarray(x_t).flatten(), zeros))
         dLdc = x_t  # remember that this is smaller in dim than the c used as a node
         dLdaA = []
         dLdaB = []

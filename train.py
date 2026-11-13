@@ -203,6 +203,7 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
                 bounds,
                 integer,
                 config.model.penalty_factor,
+                value_term=config.example_model.value_term,
             )
             environment = example_env.Arb_binary(
                 c,

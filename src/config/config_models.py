@@ -215,6 +215,16 @@ class DapModelConfig(StrictConfig):
     )
 
 
+class ExampleModelConfig(StrictConfig):
+    value_term: bool = Field(
+        True,
+        description=(
+            "Include the value term v >= aA s + aB x + b with its pieces. False "
+            "leaves v out of the MILP, so only c is trained."
+        ),
+    )
+
+
 class ValidationConfig(StrictConfig):
     every: int = Field(
         0,
@@ -319,6 +329,7 @@ class AppConfig(StrictConfig):
     portfolio_env: PortfolioEnvConfig
     dap_env: DapEnvConfig
     dap_model: DapModelConfig = Field(default_factory=DapModelConfig)
+    example_model: ExampleModelConfig = Field(default_factory=ExampleModelConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
     ppo: PpoConfig
     vanilla_gradient: VanillaGradientConfig
