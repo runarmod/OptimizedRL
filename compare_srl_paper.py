@@ -1,10 +1,9 @@
 """Compare DAP results with the SRL paper (Hoppe et al., NeurIPS 2025, Table 11).
 
-Runs the greedy, expert and random-K policies and the given trained params
-files on the paper's train and test episodes (seeds 1-100 and 2001-2100 of 80
-steps, as in scripts/DAP/00_setup.jl of the SRL codebase) and prints them next
-to the paper's results. The paper has no random baseline, so random only shows
-up in the 'ours' rows.
+Runs the greedy and expert policies and the given trained params files on the
+paper's train and test episodes (seeds 1-100 and 2001-2100 of 80 steps, as in
+scripts/DAP/00_setup.jl of the SRL codebase) and prints them next to the
+paper's results.
 
     uv run python compare_srl_paper.py params/<run id>.yaml [more params ...]
 
