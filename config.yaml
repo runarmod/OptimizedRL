@@ -2,7 +2,7 @@ name: "DAP"
 
 wandb_mode: "online"
 
-problem: "dap"
+problem: "portfolio"
 portfolio_zero_init_seeds: [5, 6, 7]
 
 numpy_seed: 5
@@ -34,7 +34,7 @@ training:
   # options: vanilla_gradient | ppo
   algorithm: "ppo"
   # options: scip | scip_brute | bnb | kbest
-  solver: "kbest"
+  solver: "scip_brute"
 
 validation:
   every: 10

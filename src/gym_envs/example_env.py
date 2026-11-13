@@ -35,6 +35,8 @@ class Arb_binary(Env):
 
     def reset(self, seed=None):
         super().reset(seed=seed)
+        if seed is not None:
+            self.init_space.seed(seed)
 
         self.state = self.init_space.sample()
         while np.any(self.C @ self.state >= self.E):

@@ -160,6 +160,18 @@ def greedy_assortment(sim: DynamicAssortmentSimulator) -> np.ndarray:
     return _to_assortment(items, sim.n_items)
 
 
+def random_assortment(sim: DynamicAssortmentSimulator) -> np.ndarray:
+    """Random baseline: K distinct in-stock items, drawn uniformly.
+
+    The draw is seeded by the episode seed and step, so an episode gives the
+    same assortments whatever else is evaluated before it.
+    """
+    rng = np.random.default_rng((sim.seed, sim.current_step, 1))
+    in_stock = np.flatnonzero(sim.inventory > 0)
+    items = rng.choice(in_stock, size=sim.assortment_size, replace=False)
+    return _to_assortment(items, sim.n_items)
+
+
 def expert_assortment(sim: DynamicAssortmentSimulator) -> np.ndarray:
     """Expert policy of the SRL paper (`expert_solution` in the SRL codebase).
 

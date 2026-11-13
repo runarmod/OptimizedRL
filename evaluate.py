@@ -5,7 +5,8 @@ of different training runs can be compared directly.
 
     uv run python evaluate.py params/<run id>.yaml params/<other run id>.yaml
 
-The greedy and expert policies of the DAP environment need no params file:
+The greedy, expert and random-K policies of the DAP environment need no
+params file:
 
     uv run python evaluate.py --dap-baselines
 
@@ -82,6 +83,7 @@ def evaluate_dap_baselines(
     for label, policy in (
         ("greedy", dap_env.greedy_assortment),
         ("expert", dap_env.expert_assortment),
+        ("random", dap_env.random_assortment),
     ):
         results.extend(evaluate(label, env, partial(policy, env.sim), seeds, max_steps))
     return results
@@ -130,7 +132,8 @@ def main():
     parser.add_argument(
         "--dap-baselines",
         action="store_true",
-        help="Also evaluate the greedy and expert policies on dap_env from config.yaml.",
+        help="Also evaluate the greedy, expert and random-K policies on dap_env"
+        " from config.yaml.",
     )
     parser.add_argument("--csv", type=Path, help="Write per-episode results here.")
     args = parser.parse_args()
