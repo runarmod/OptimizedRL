@@ -42,8 +42,9 @@ class PortfolioModel(Model):
         initial_asset_price=100.0,
         value_term=True,
     ):
-        """value_term=False leaves the value pieces y >= aA s + aB x + b out of
-        the MILP and fixes y to 0, so only c is trained."""
+        """value_term=False zeroes the value pieces y >= aA s + aB x + b, so
+        y = 0 and only c is trained. The (now -y <= 0) rows are kept because
+        SCIP runs into numerical errors on some states without them."""
         super().__init__()
         self.value_term = value_term
         self.c = c.astype(float)
@@ -161,12 +162,13 @@ class PortfolioModel(Model):
             z_start = n_actions + 2
             u_start = n_actions + 2 + n_actions
 
-        n_pieces = self.aA.shape[0] if self.value_term else 0
-        neg_ones = -1 * np.ones((n_pieces, 1))
-        A_ub_upper = np.zeros((n_pieces, var_dim))
-        A_ub_upper[:, x_start : x_start + n_actions] = self.aB[:n_pieces]
+        neg_ones = -1 * np.ones((self.aA.shape[0], 1))
+        A_ub_upper = np.zeros((self.aA.shape[0], var_dim))
         A_ub_upper[:, y_idx : y_idx + 1] = neg_ones
-        b_ub_upper = (-self.b - self.aA @ self.s_t)[:n_pieces]
+        b_ub_upper = np.zeros((self.aA.shape[0],))
+        if self.value_term:
+            A_ub_upper[:, x_start : x_start + n_actions] = self.aB
+            b_ub_upper = -self.b - self.aA @ self.s_t
 
         A_ub_lower = np.zeros((self.D.shape[0], var_dim))
         A_ub_lower[:, x_start : x_start + n_actions] = self.D
@@ -239,7 +241,7 @@ class PortfolioModel(Model):
                     new_ub = min(float(ub), new_ub)
                 bounds[i] = (lb, new_ub)
         integer = copy(self.integer)
-        bounds.append((None, None) if self.value_term else (0, 0))
+        bounds.append((None, None))
         bounds.append((0, None))
         for _ in range(n_actions):
             bounds.append((0, None))
