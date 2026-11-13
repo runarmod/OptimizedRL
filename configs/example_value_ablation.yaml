@@ -130,7 +130,7 @@ vanilla_gradient:
     num_samples: 0.3
   train_iters: 20
   rollout_iters: 80
-total_iters: 100
+total_iters: 300
 terminal_log_every: 100
 save_every: 10
 example_model:

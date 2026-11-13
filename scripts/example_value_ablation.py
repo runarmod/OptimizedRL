@@ -5,7 +5,7 @@ scripts/run_example_value_ablation.sh.
 
 For every model seed (one problem instance each) it evaluates, on the same test
 episodes, the untrained and the best trained parameters with and without the
-value term v. The env reward is a cost, so lower is better. The summary gives
+value term v, and the policy that always takes the zero action. The env reward is a cost, so lower is better. The summary gives
 the mean over seeds with the standard error of the seed means, and the paired
 differences between the variants with a paired t-test.
 """
@@ -22,7 +22,8 @@ from scipy import stats
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from evaluate import config_for_params, evaluate_params  # noqa: E402
+from evaluate import config_for_params, evaluate, evaluate_params  # noqa: E402
+from train import build_model_and_env  # noqa: E402
 from src.config.config_loader import load_config  # noqa: E402
 
 VARIANTS = ("v", "no_v")
@@ -30,7 +31,7 @@ VARIANTS = ("v", "no_v")
 
 def runs_of_seed(seed_dir: Path) -> list[tuple[str, object]]:
     """(label, config) of the untrained and trained runs of one seed."""
-    runs = []
+    runs = [("zero_action", load_config(seed_dir / "v" / "config.yaml"))]
     for variant in VARIANTS:
         variant_dir = seed_dir / variant
         config = load_config(variant_dir / "config.yaml")
@@ -44,7 +45,12 @@ def runs_of_seed(seed_dir: Path) -> list[tuple[str, object]]:
 
 
 def evaluate_run(seed: int, label: str, config, test_seeds: list[int]) -> list[dict]:
-    rows = evaluate_params(label, config, PROJECT_ROOT, test_seeds, 10)
+    if label == "zero_action":
+        _, env = build_model_and_env(config, PROJECT_ROOT)
+        zero = np.zeros(env.action_space.shape, dtype=np.int32)
+        rows = evaluate(label, env, lambda: zero, test_seeds, 10)
+    else:
+        rows = evaluate_params(label, config, PROJECT_ROOT, test_seeds, 10)
     return [{"model_seed": seed, **row} for row in rows]
 
 
@@ -82,7 +88,7 @@ def main():
     labels = [
         f"{kind}_{variant}" for kind in ("trained", "untrained") for variant in VARIANTS
     ]
-    labels = [label for label in labels if label in seed_means]
+    labels = [l for l in labels + ["zero_action"] if l in seed_means]
     seeds = sorted(set.intersection(*(set(seed_means[label]) for label in labels)))
 
     lines = [f"Test cost per episode (lower is better), {len(test_seeds)} episodes, "
@@ -105,6 +111,8 @@ def main():
         ("trained_v", "untrained_v"),
         ("trained_no_v", "untrained_no_v"),
         ("untrained_v", "untrained_no_v"),
+        ("trained_v", "zero_action"),
+        ("trained_no_v", "zero_action"),
     ]
     for a, b in pairs:
         if a not in seed_means or b not in seed_means:

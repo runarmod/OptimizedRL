@@ -3,7 +3,7 @@
 #
 #   nohup bash scripts/run_example_value_ablation.sh [SEED ...] > example_value.log 2>&1 &
 #
-# Every model seed (default 1-10) is its own problem instance, and is trained
+# Every model seed (default 1-20) is its own problem instance, and is trained
 # once with v and once without. scripts/example_value_ablation.py then tests
 # the untrained and best trained parameters of both variants on the same
 # episodes and writes summary.txt.
@@ -18,7 +18,7 @@ cd "$(dirname "$0")/.."
 
 seeds=("$@")
 if (( ${#seeds[@]} == 0 )); then
-    seeds=(1 2 3 4 5 6 7 8 9 10)
+    seeds=($(seq 1 20))
 fi
 config=${CONFIG:-configs/example_value_ablation.yaml}
 run_dir=${RUN_DIR:-runs/example_value_$(date +%Y%m%d_%H%M%S)}
