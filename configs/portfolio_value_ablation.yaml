@@ -1,0 +1,136 @@
+# Portfolio problem: CORL with and without the value pieces in the MILP.
+# Copy of config.yaml's portfolio setup (2026-11-13). Used by
+# scripts/run_example_value_ablation.sh, which sets numpy_seed and
+# portfolio_model.value_term per run. Seeds 5-7 are zero-init seeds, so use 8+.
+name: portfolio value ablation
+wandb_mode: online
+problem: portfolio
+portfolio_zero_init_seeds:
+- 5
+- 6
+- 7
+numpy_seed: 8
+load: false
+load_path: params/k4g2v0ol.yaml
+device: cpu
+scip:
+  verbose: false
+scip_brute:
+  verbose: false
+  disable_heuristics: true
+  disable_presolve: true
+  disable_separating: true
+  disable_propagation: true
+  disable_conflict_analysis: true
+  disable_symmetry: true
+  prefer_most_fractional_branching: false
+  prefer_breadth_first: false
+  tighten_integer_projected_bounds: false
+  mimic_bnb_pool_filter: false
+  prefer_depth_first: true
+  min_pool_size: 8
+training:
+  algorithm: ppo
+  solver: scip_brute
+validation:
+  every: 10
+  episodes: 30
+  splits:
+    train: 1
+    val: 1001
+  maximize_reward: true
+model:
+  state_size: 6
+  action_size: 3
+  n_cons: 4
+  n_value_func: 2
+  penalty_factor: 1000
+gym:
+  pf: 30
+  noise_std: 1
+plotting:
+  window_size: 10
+portfolio_model:
+  lr_mult_aA: 1.0
+  lr_mult_aB: 1.0
+  lr_mult_b: 1.0
+  position_dynamics_mode: trade_stateful
+  value_term: true
+portfolio_env:
+  transaction_cost: 0.0001
+  holding_cost: 1.0e-05
+  budget_cap: 750
+  initial_cash: 1000
+  cash_interest_rate: 0.0
+  risk_cap: 750
+  risk_weight: 1.0
+  asset_max_position: 10
+  action_mode: target
+  reward_mode: legacy
+  inventory_penalty: 0.05
+  market_mode: returns
+  return_mu: 0.0
+  return_phi: 0.9
+  return_sigma: 0.02
+  alpha_mode: 'on'
+  alpha_rho: 0.9
+  alpha_sigma: 0.02
+  alpha_to_return: 0.8
+  signal_noise_std: 0.002
+  return_signal_scale: 2.0
+  cvar_mode: 'on'
+  cvar_cap: 0.12
+  cvar_alpha: 0.95
+  cvar_n_scenarios: 40
+  cvar_obj_weight: 0.2
+  price_levels_mode: 'on'
+  initial_asset_price: 100.0
+  min_asset_price: 1.0
+dap_env:
+  n_items: 20
+  assortment_size: 4
+  initial_inventory: 200
+  max_steps: 80
+  train_seeds:
+  - 1
+  - 100
+dap_model:
+  pairwise: false
+ppo:
+  minimize_env_reward: false
+  normalize_rewards: true
+  reward_norm_eps: 1.0e-08
+  reward_clip: null
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_param: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  actor_lr: 0.005
+  critic_lr: 0.001
+  policy_beta: 1
+  normalize_obj_values: true
+  obj_norm_eps: 1.0e-08
+  opt_epochs: 20
+  mini_batch_size: 32
+  rollout_iters: 80
+  target_kl: 0.01
+  normalize_adv: true
+  nn_sample: true
+vanilla_gradient:
+  critic:
+    lr: 0.01
+    df: 0.9
+    eps: 0.01
+  actor:
+    sampled_grad: true
+    nn_sample: true
+    lr: 0.001
+    beta: 0.05
+    sample: false
+    num_samples: 0.3
+  train_iters: 20
+  rollout_iters: 80
+total_iters: 300
+terminal_log_every: 100
+save_every: 10

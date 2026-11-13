@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Example problem: train CORL with and without the value term v, then test.
+# Example or portfolio problem: train CORL with and without the value term v,
+# then test (CONFIG=configs/portfolio_value_ablation.yaml for portfolio).
 #
 #   nohup bash scripts/run_example_value_ablation.sh [SEED ...] > example_value.log 2>&1 &
 #

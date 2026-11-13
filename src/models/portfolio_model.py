@@ -40,8 +40,12 @@ class PortfolioModel(Model):
         cvar_obj_weight=0.0,
         price_levels_mode="off",
         initial_asset_price=100.0,
+        value_term=True,
     ):
+        """value_term=False leaves the value pieces y >= aA s + aB x + b out of
+        the MILP and fixes y to 0, so only c is trained."""
         super().__init__()
+        self.value_term = value_term
         self.c = c.astype(float)
         self.C = C.astype(float)
         self.D = D.astype(float)
@@ -157,11 +161,12 @@ class PortfolioModel(Model):
             z_start = n_actions + 2
             u_start = n_actions + 2 + n_actions
 
-        neg_ones = -1 * np.ones((self.aA.shape[0], 1))
-        A_ub_upper = np.zeros((self.aA.shape[0], var_dim))
+        n_pieces = self.aA.shape[0] if self.value_term else 0
+        neg_ones = -1 * np.ones((n_pieces, 1))
+        A_ub_upper = np.zeros((n_pieces, var_dim))
         A_ub_upper[:, x_start : x_start + n_actions] = self.aB
         A_ub_upper[:, y_idx : y_idx + 1] = neg_ones
-        b_ub_upper = -self.b - self.aA @ self.s_t
+        b_ub_upper = (-self.b - self.aA @ self.s_t)[:n_pieces]
 
         A_ub_lower = np.zeros((self.D.shape[0], var_dim))
         A_ub_lower[:, x_start : x_start + n_actions] = self.D
@@ -234,7 +239,7 @@ class PortfolioModel(Model):
                     new_ub = min(float(ub), new_ub)
                 bounds[i] = (lb, new_ub)
         integer = copy(self.integer)
-        bounds.append((None, None))
+        bounds.append((None, None) if self.value_term else (0, 0))
         bounds.append((0, None))
         for _ in range(n_actions):
             bounds.append((0, None))
@@ -314,6 +319,9 @@ class PortfolioModel(Model):
         return node
 
     def lagrange_gradient(self, x_t, state, eq_duals, ineq_duals):
+        if not self.value_term:
+            zeros = np.zeros(self.aA.size + self.aB.size + self.b.size)
+            return np.hstack((np.asarray(x_t, dtype=float).flatten(), zeros))
         if ineq_duals is None or len(ineq_duals) < self.n_value_pieces:
             # If solver does not provide duals (e.g., infeasible/fathomed branch),
             # skip parameter update contribution for this sample.

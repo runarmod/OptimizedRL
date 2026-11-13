@@ -1,11 +1,12 @@
-"""Test the example-problem value-term ablation trained by
+"""Test the value-term ablation (example or portfolio problem) trained by
 scripts/run_example_value_ablation.sh.
 
     uv run python scripts/example_value_ablation.py runs/example_value_<timestamp>
 
 For every model seed (one problem instance each) it evaluates, on the same test
 episodes, the untrained and the best trained parameters with and without the
-value term v, and the policy that always takes the zero action. The env reward is a cost, so lower is better. The summary gives
+value term v, and the policy that always takes the zero action. Whether higher or lower reward is better is read from
+validation.maximize_reward of the runs' config. The summary gives
 the mean over seeds with the standard error of the seed means, and the paired
 differences between the variants with a paired t-test.
 """
@@ -89,9 +90,11 @@ def main():
         f"{kind}_{variant}" for kind in ("trained", "untrained") for variant in VARIANTS
     ]
     labels = [l for l in labels + ["zero_action"] if l in seed_means]
+    maximize = load_config(next(args.run_dir.glob("seed_*/v/config.yaml"))).validation.maximize_reward
+    sign = 1 if maximize else -1
     seeds = sorted(set.intersection(*(set(seed_means[label]) for label in labels)))
 
-    lines = [f"Test cost per episode (lower is better), {len(test_seeds)} episodes, "
+    lines = [f"Test reward per episode ({'higher' if maximize else 'lower'} is better), {len(test_seeds)} episodes, "
              f"{len(seeds)} model seeds"]
     lines.append("")
     lines.append("seed  " + "".join(f"{label:>14}" for label in labels))
@@ -105,7 +108,7 @@ def main():
         values = np.array([seed_means[label][s] for s in seeds])
         lines.append(f"{label:<16}{values.mean():>10.1f}{stats.sem(values):>10.1f}")
     lines.append("")
-    lines.append("Paired differences over seeds (a - b; negative means a is better)")
+    lines.append(f"Paired differences over seeds (a - b; {'positive' if maximize else 'negative'} means a is better)")
     pairs = [
         ("trained_v", "trained_no_v"),
         ("trained_v", "untrained_v"),
@@ -120,7 +123,7 @@ def main():
         diff = np.array([seed_means[a][s] - seed_means[b][s] for s in seeds])
         p = stats.ttest_rel([seed_means[a][s] for s in seeds],
                             [seed_means[b][s] for s in seeds]).pvalue
-        wins = int((diff < 0).sum())
+        wins = int((sign * diff > 0).sum())
         lines.append(
             f"{a} - {b}: {diff.mean():.1f} +/- {stats.sem(diff):.1f} (SE), "
             f"p = {p:.3f}, a better on {wins}/{len(seeds)} seeds"

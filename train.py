@@ -253,6 +253,7 @@ def build_model_and_env(config: AppConfig, project_root: Path) -> tuple[Model, E
                 cvar_obj_weight=portfolio_cfg.cvar_obj_weight,
                 price_levels_mode=portfolio_cfg.price_levels_mode,
                 initial_asset_price=portfolio_cfg.initial_asset_price,
+                value_term=portfolio_model_cfg.value_term,
             )
             environment = portfolio_env.PortfolioEnv(
                 c,

@@ -133,6 +133,13 @@ class PortfolioModelConfig(StrictConfig):
     position_dynamics_mode: Literal["legacy", "trade_stateful"] = Field(
         description="Position dynamics formulation."
     )
+    value_term: bool = Field(
+        True,
+        description=(
+            "Include the value pieces y >= aA s + aB x + b. False leaves them out "
+            "of the MILP, so only c is trained."
+        ),
+    )
 
 
 class PortfolioEnvConfig(StrictConfig):
