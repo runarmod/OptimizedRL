@@ -848,9 +848,9 @@ class SCIPSolver(Solver):
                 )
             yield entry
 
-    def _build_model(self, model, init_node):
-        """Configure `model` and add the variables, objective and constraints of
-        init_node. Returns the variables."""
+    def _build_model(self, model, init_node, configure=True):
+        """Configure `model` (unless configure is False) and add the variables,
+        objective and constraints of init_node. Returns the variables."""
         c = init_node["c"]
         a_ub = init_node["A_ub"]
         b_ub = init_node["b_ub"]
@@ -860,7 +860,10 @@ class SCIPSolver(Solver):
         integer = init_node["integer"]
         n_vars = len(c)
 
-        self._configure_model(model)
+        if configure:
+            self._configure_model(model)
+        else:
+            model.hideOutput()
 
         vars_ = []
         for idx in range(n_vars):
@@ -900,10 +903,20 @@ class SCIPSolver(Solver):
     def solve_best(self, node, model):
         """Action of SCIP's optimal integer solution. Solves only the MILP: no
         node tracking or candidate pool."""
+        try:
+            return self._solve_best(node, model, configure=True)
+        except NoSolutionError:
+            raise
+        except Exception:
+            # SCIP's LP solver sometimes fails with numerical errors under the
+            # restricted settings; SCIP's defaults find the same optimum.
+            return self._solve_best(node, model, configure=False)
+
+    def _solve_best(self, node, model, configure):
         self.last_tree_snapshot = None
         scip_model = Model("MILP")
         try:
-            vars_ = self._build_model(scip_model, node)
+            vars_ = self._build_model(scip_model, node, configure)
             scip_model.optimize()
             if scip_model.getNSols() == 0:
                 raise NoSolutionError(
