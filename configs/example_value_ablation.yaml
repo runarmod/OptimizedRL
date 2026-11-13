@@ -3,7 +3,7 @@
 # example_model.value_term per run. The env reward is a cost, so PPO minimizes
 # it and validation keeps the model with the lowest reward.
 name: example value ablation
-wandb_mode: offline
+wandb_mode: online
 problem: example
 portfolio_zero_init_seeds:
 - 5
